@@ -1,39 +1,47 @@
 import express from "express";
 import cors from "cors";
-import helmet from "helmet";
+import { prisma } from "./database";
 import dotenv from "dotenv";
-import authRoutes from "./routes";
-import {
-  corsOptions,
-  errorHandler,
-  healthCheck,
-} from "../../../shared/middleware";
+import path from "path";
 
-//load environment variables
-dotenv.config();
+// CARGA .env DESDE LA RAÍZ DEL PROYECTO (auth-service)
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// setup middlewares
-app.use(cors(corsOptions()));
-app.use(helmet());
+app.use(cors());
+app.use(express.json());
 
-// parse JSON bodies
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.post("/test", async (req, res) => {
+  const { mensaje } = req.body;
 
-// API routes
-app.use("/auth", authRoutes);
-app.get("/health", healthCheck);
+  if (!mensaje) {
+    return res.status(400).json({ success: false, error: "Falta mensaje" });
+  }
 
-// Error handling middleware
-app.use(errorHandler);
+  try {
+    const test = await prisma.test.create({
+      data: { mensaje },
+    });
 
-app.listen(PORT, () => {
-  console.log(`Auth service is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+    res.status(201).json({
+      success: true,
+      data: test,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
 });
 
-export default app;
+app.get("/health", (req, res) => {
+  res.json({ status: "OK" });
+});
+
+app.listen(PORT, () => {
+  console.log(`Auth Service en http://localhost:${PORT}`);
+  console.log(`Prueba: POST http://localhost:${PORT}/test`);
+});
