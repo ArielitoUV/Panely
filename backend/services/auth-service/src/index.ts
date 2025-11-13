@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { prisma } from "./database";
+import  prisma   from "./database";
 import dotenv from "dotenv";
 import path from "path";
 

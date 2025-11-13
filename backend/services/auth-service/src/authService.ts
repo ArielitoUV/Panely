@@ -1,5 +1,5 @@
 import { AuthTokens, JWTPayload, ServiceError } from "../../../shared/types";
-import prisma from "./database";
+import { prisma }   from "./database";
 import { createServiceError } from "../../../shared/utils";
 import bcrypt from "bcryptjs";
 import jwt, { SignOptions } from "jsonwebtoken";
