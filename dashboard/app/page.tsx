@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Construction, ArrowRight } from "lucide-react"
+import { Construction, ArrowRight, UserPlus, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default function Home() {
@@ -21,9 +21,23 @@ export default function Home() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground">Sitio en Construcción</h1>
         </div>
 
-        <div className="pt-4">
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+          <Link href="/auth/registro">
+            <Button size="lg" variant="default" className="group w-full sm:w-auto">
+              <UserPlus className="mr-2 h-5 w-5" />
+              Registro
+            </Button>
+          </Link>
+
+          <Link href="/auth/iniciar-sesion">
+            <Button size="lg" variant="outline" className="group w-full sm:w-auto bg-transparent">
+              <LogIn className="mr-2 h-5 w-5" />
+              Iniciar Sesión
+            </Button>
+          </Link>
+
           <Link href="/dashboard">
-            <Button size="lg" className="group">
+            <Button size="lg" variant="secondary" className="group w-full sm:w-auto">
               Ir al Dashboard
               <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>

@@ -1,96 +1,41 @@
+// backend/services/auth-service/src/authController.ts
 import { Request, Response } from "express";
-import { asyncHandler } from "../../../shared/middleware";
-import { AuthService } from "./authService";
-import {
-  createErrorResponse,
-  createSuccessResponse,
-} from "../../../shared/utils";
+import { prisma } from "./database";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
-const authService = new AuthService();
+const JWT_SECRET = process.env.JWT_SECRET || "temporal123";
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "refresh123";
 
-export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-  const tokens = await authService.register(email, password);
+export const register = async (req: Request, res: Response) => {
+  const { email, password, nombre, apellido, telefono, nombreEmpresa } = req.body;
 
-  res
-    .status(201)
-    .json(createSuccessResponse(tokens, "Usuario registrado exitosamente"));
-});
-
-export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-  const tokens = await authService.login(email, password);
-
-  res
-    .status(200)
-    .json(createSuccessResponse(tokens, "Usuario logueado exitosamente"));
-});
-
-export const refreshTokens = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { refreshToken } = req.body;
-    const tokens = await authService.refreshToken(refreshToken);
-
-    res
-      .status(200)
-      .json(createSuccessResponse(tokens, "Token refrescado exitosamente"));
-  }
-);
-
-export const logout = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
-  await authService.logout(refreshToken);
-
-  res
-    .status(200)
-    .json(createSuccessResponse(null, "Usuario deslogueado exitosamente"));
-});
-
-export const validateToken = asyncHandler(
-  async (req: Request, res: Response) => {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json(createErrorResponse("No token proporcionado"));
-    }
-
-    const payload = await authService.validateToken(token);
-
-    res.status(200).json(createSuccessResponse(payload, "Token is valid"));
-  }
-);
-
-export const getProfile = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-
-  if (!userId) {
-    return res.status(401).json(createErrorResponse("Unauthorized"));
+  if (!email || !password || !nombre || !apellido) {
+    return res.status(400).json({ error: "Faltan campos" });
   }
 
-  const user = await authService.getUserById(userId);
+  try {
+    const existe = await prisma.user.findUnique({ where: { email } });
+    if (existe) return res.status(409).json({ error: "Email ya existe" });
 
-  if (!user) {
-    return res.status(404).json(createErrorResponse("Usuario no encontrado"));
+    const hash = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { email, password: hash, nombre, apellido, telefono, nombreEmpresa },
+    });
+
+    const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: "7d" });
+
+    res.status(201).json({
+      success: true,
+      user: { id: user.id, email: user.email, nombre: user.nombre },
+      tokens: { accessToken, refreshToken },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
+};
 
-  return res
-    .status(200)
-    .json(createSuccessResponse(user, "Perfil de usuario recuperado"));
-});
-
-export const deleteAccount = asyncHandler(
-  async (req: Request, res: Response) => {
-    const userId = req.user?.userId;
-
-    if (!userId) {
-      return res.status(401).json(createErrorResponse("Unauthorized"));
-    }
-
-    await authService.deleteUser(userId);
-
-    return res
-      .status(200)
-      .json(createSuccessResponse(null, "Cuenta eliminada exitosamente"));
-  }
-);
+export const login = async (req: Request, res: Response) => {
+  res.json({ message: "Login listo (lo hacemos después)" });
+};
