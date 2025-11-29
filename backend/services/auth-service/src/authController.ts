@@ -4,7 +4,7 @@ import { prisma } from "./database";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "temporal123";
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_never_used";
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "refresh123";
 
 export const register = async (req: Request, res: Response) => {

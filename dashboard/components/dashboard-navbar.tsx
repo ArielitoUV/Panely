@@ -20,7 +20,7 @@ export function DashboardNavbar({ onMenuClick }: DashboardNavbarProps) {
         <span className="sr-only">Toggle menu</span>
       </Button>
 
-      <div className="flex-1 max-w-md lg:max-w-xl">
+      {/* <div className="flex-1 max-w-md lg:max-w-xl">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
@@ -29,7 +29,7 @@ export function DashboardNavbar({ onMenuClick }: DashboardNavbarProps) {
             className="pl-10 pr-4 h-10 w-full bg-muted/50 border-0 focus-visible:bg-background text-sm"
           />
         </div>
-      </div>
+      </div> */}
 
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <Button

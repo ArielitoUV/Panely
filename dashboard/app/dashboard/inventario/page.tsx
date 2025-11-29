@@ -1,157 +1,208 @@
 "use client"
 
-import { Package, AlertTriangle, CheckCircle, Search, Plus } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Package, AlertTriangle, CheckCircle, Search, Plus, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+
+interface Insumo {
+  id: number
+  nombre: string
+  presentacion: string
+  unidadMedida: string
+  valorCompra: number
+  stockActual: number
+  stockMinimo: number
+}
 
 export default function InventarioPage() {
+  const [insumos, setInsumos] = useState<Insumo[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [user, setUser] = useState<any>(null)
 
-  // Datos de ejemplo
-  const inventario = [
-    { id: 1, insumo: "Harina de Trigo", stock: 50, minimo: 20, estado: "normal" },
-    { id: 2, insumo: "Azúcar Blanca", stock: 15, minimo: 25, estado: "bajo" },
-    { id: 3, insumo: "Aceite Vegetal", stock: 30, minimo: 15, estado: "normal" },
-    { id: 4, insumo: "Sal", stock: 100, minimo: 30, estado: "normal" },
-    { id: 5, insumo: "Levadura", stock: 8, minimo: 10, estado: "bajo" },
-    { id: 6, insumo: "Mantequilla", stock: 25, minimo: 20, estado: "normal" },
-    { id: 7, insumo: "Huevos (docena)", stock: 40, minimo: 15, estado: "normal" },
-    { id: 8, insumo: "Leche (litros)", stock: 12, minimo: 20, estado: "bajo" },
-    { id: 9, insumo: "Chocolate en Polvo", stock: 35, minimo: 10, estado: "normal" },
-    { id: 10, insumo: "Vainilla", stock: 18, minimo: 8, estado: "normal" },
-  ]
+  const [form, setForm] = useState({
+    nombre: "",
+    presentacion: "",
+    unidadMedida: "",
+    valorCompra: "",
+    stockActual: "",
+    stockMinimo: "10",
+  })
 
-  const filteredInventario = inventario.filter((item) => item.insumo.toLowerCase().includes(searchTerm.toLowerCase()))
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user")
+    const token = localStorage.getItem("accessToken")
+    if (storedUser) setUser(JSON.parse(storedUser))
 
-  const insumosNormales = inventario.filter((item) => item.estado === "normal").length
-  const insumosBajos = inventario.filter((item) => item.estado === "bajo").length
+    const cargarInsumos = async () => {
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        const res = await fetch("http://localhost:3001/insumos", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        const data = await res.json()
+        
+        if (res.ok && data.success) {
+          setInsumos(data.insumos || [])
+        } else {
+          console.log("Respuesta del servidor:", data)
+          if (data.error === "Invalid token") {
+            alert("Sesión expirada. Vuelve a iniciar sesión.")
+            localStorage.clear()
+            window.location.href = "/auth/iniciar-sesion"
+          }
+        }
+      } catch (err) {
+        console.error("Error de red:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    cargarInsumos()
+  }, [])
+
+  const crearInsumo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem("accessToken")
+    if (!token) return
+
+    try {
+      const res = await fetch("http://localhost:3001/insumos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nombre: form.nombre,
+          presentacion: form.presentacion,
+          unidadMedida: form.unidadMedida,
+          valorCompra: parseInt(form.valorCompra) || 0,
+          stockActual: parseInt(form.stockActual) || 0,
+          stockMinimo: parseInt(form.stockMinimo) || 10,
+        }),
+      })
+
+      if (res.ok) {
+        setIsModalOpen(false)
+        setForm({ nombre: "", presentacion: "", unidadMedida: "", valorCompra: "", stockActual: "", stockMinimo: "10" })
+        window.location.reload() // recarga rápida para ver el nuevo insumo
+      } else {
+        const error = await res.json()
+        alert("Error: " + (error.error || "No se pudo guardar"))
+      }
+    } catch (err) {
+      alert("Error de conexión")
+    }
+  }
+
+  const filtered = insumos.filter(i => i.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+  const bajos = insumos.filter(i => i.stockActual < i.stockMinimo).length
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-96"><Loader2 className="h-10 w-10 animate-spin" /></div>
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6 p-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Inventario</h1>
-          <p className="text-sm text-muted-foreground mt-1">Gestiona y controla tus insumos</p>
+          <h1 className="text-3xl font-bold">Inventario</h1>
+          <p className="text-muted-foreground">Bienvenido, {user?.nombre || "Usuario"}</p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          <Plus className="h-4 w-4 mr-2" />
-          Agregar Insumo
-        </Button>
+
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogTrigger asChild>
+            <Button size="lg">
+              <Plus className="mr-2" /> Agregar Insumo
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nuevo Insumo</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={crearInsumo} className="space-y-4">
+              <Input placeholder="Nombre del insumo" required value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input placeholder="Presentación (ej: Bolsa 25kg)" required value={form.presentacion} onChange={e => setForm({...form, presentacion: e.target.value})} />
+                <Input placeholder="Unidad (kg, un, lt)" required value={form.unidadMedida} onChange={e => setForm({...form, unidadMedida: e.target.value})} />
+              </div>
+              <Input type="number" placeholder="Valor compra ($)" required value={form.valorCompra} onChange={e => setForm({...form, valorCompra: e.target.value})} />
+              <Input type="number" placeholder="Stock mínimo" value={form.stockMinimo} onChange={e => setForm({...form, stockMinimo: e.target.value})} />
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+                <Button type="submit">Guardar</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Insumos</p>
-              <p className="text-2xl font-bold text-foreground mt-1 sm:text-3xl">{inventario.length}</p>
-            </div>
-            <div className="bg-primary/10 p-3 rounded-lg">
-              <Package className="h-6 w-6 text-primary" />
-            </div>
-          </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-card p-6 rounded-lg border">
+          <p className="text-sm text-muted-foreground">Total Insumos</p>
+          <p className="text-3xl font-bold">{insumos.length}</p>
         </div>
-
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Stock Normal</p>
-              <p className="text-2xl font-bold text-foreground mt-1 sm:text-3xl">{insumosNormales}</p>
-            </div>
-            <div className="bg-green-500/10 p-3 rounded-lg">
-              <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
-            </div>
-          </div>
+        <div className="bg-card p-6 rounded-lg border">
+          <p className="text-sm text-muted-foreground">Stock Normal</p>
+          <p className="text-3xl font-bold text-green-600">{insumos.length - bajos}</p>
         </div>
-
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Stock Bajo</p>
-              <p className="text-2xl font-bold text-foreground mt-1 sm:text-3xl">{insumosBajos}</p>
-            </div>
-            <div className="bg-red-500/10 p-3 rounded-lg">
-              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* barra search */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Buscar insumo..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        <div className="bg-card p-6 rounded-lg border">
+          <p className="text-sm text-muted-foreground">Stock Bajo</p>
+          <p className="text-3xl font-bold text-red-600">{bajos}</p>
         </div>
       </div>
 
-      {/* Tabla de Inventario */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted/50 border-b border-border">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-foreground">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-foreground">INSUMO</th>
-                <th className="text-left p-4 text-sm font-semibold text-foreground">STOCK</th>
-                <th className="text-left p-4 text-sm font-semibold text-foreground">MÍNIMO</th>
-                <th className="text-left p-4 text-sm font-semibold text-foreground">ESTADO</th>
+      <div className="relative">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Buscar insumo..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      </div>
+
+      <div className="bg-card rounded-lg border overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-muted">
+            <tr>
+              <th className="text-left p-4">Insumo</th>
+              <th className="text-left p-4">Presentación</th>
+              <th className="text-left p-4">Stock</th>
+              <th className="text-left p-4">Mínimo</th>
+              <th className="text-left p-4">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="p-4 font-medium">{i.nombre}</td>
+                <td className="p-4 text-sm text-muted-foreground">{i.presentacion}</td>
+                <td className="p-4">{i.stockActual} {i.unidadMedida}</td>
+                <td className="p-4 text-sm">{i.stockMinimo}</td>
+                <td className="p-4">
+                  {i.stockActual < i.stockMinimo ? (
+                    <span className="text-red-600 font-medium">Stock Bajo</span>
+                  ) : (
+                    <span className="text-green-600 font-medium">Normal</span>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredInventario.map((item) => (
-                <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="p-4 text-sm text-muted-foreground">#{item.id.toString().padStart(3, "0")}</td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="bg-primary/10 p-2 rounded">
-                        <Package className="h-4 w-4 text-primary" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">{item.insumo}</span>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span
-                      className={`text-sm font-semibold ${
-                        item.stock < item.minimo ? "text-red-600 dark:text-red-400" : "text-foreground"
-                      }`}
-                    >
-                      {item.stock} unidades
-                    </span>
-                  </td>
-                  <td className="p-4 text-sm text-muted-foreground">{item.minimo} unidades</td>
-                  <td className="p-4">
-                    {item.estado === "bajo" ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400">
-                        <AlertTriangle className="h-3 w-3" />
-                        Stock Bajo
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                        <CheckCircle className="h-3 w-3" />
-                        Normal
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredInventario.length === 0 && (
-          <div className="p-8 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No se encontraron insumos</p>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="p-12 text-center text-muted-foreground">
+            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No hay insumos registrados aún</p>
           </div>
         )}
       </div>
