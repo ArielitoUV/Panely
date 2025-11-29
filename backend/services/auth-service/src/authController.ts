@@ -37,5 +37,56 @@ export const register = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
-  res.json({ message: "Login listo (lo hacemos después)" });
+  const { identifier, password } = req.body; // identifier = email o teléfono
+
+  if (!identifier || !password) {
+    return res.status(400).json({ error: "Faltan credenciales" });
+  }
+
+  try {
+    // Buscar por email o por teléfono
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifier },
+          { telefono: identifier },
+        ],
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Credenciales inválidas" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Credenciales inválidas" });
+    }
+
+    const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: "7d" });
+
+    // Guardar refresh token
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        nombre: user.nombre,
+        apellido: user.apellido,
+        nombreEmpresa: user.nombreEmpresa,
+      },
+      tokens: { accessToken, refreshToken },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Error del servidor" });
+  }
 };
