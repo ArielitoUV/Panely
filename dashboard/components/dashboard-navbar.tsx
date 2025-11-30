@@ -43,7 +43,7 @@ export function DashboardNavbar({ onMenuClick }: DashboardNavbarProps) {
           <span className="sr-only">Toggle theme</span>
         </Button>
 
-        <Button variant="ghost" size="icon" className="relative h-10 w-10">
+        {/* <Button variant="ghost" size="icon" className="relative h-10 w-10">
           <Bell className="h-5 w-5" />
           <Badge
             variant="destructive"
@@ -52,7 +52,7 @@ export function DashboardNavbar({ onMenuClick }: DashboardNavbarProps) {
             3
           </Badge>
           <span className="sr-only">Notifications</span>
-        </Button>
+        </Button> */}
       </div>
     </header>
   )
