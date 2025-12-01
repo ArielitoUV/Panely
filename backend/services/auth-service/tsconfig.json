@@ -24,11 +24,13 @@
     "paths": {
       "@/*": ["src/*"],
       "@shared/*": ["../../shared/*"]
-    }
+    },
+    "typeRoots": ["./node_modules/@types", "./src/types"]   // ← NUEVA LÍNEA
   },
   "include": [
     "src/**/*",
-    "../../shared/**/*"
+    "../../shared/**/*",
+    "src/types/**/*"                                        // ← NUEVA LÍNEA
   ],
   "exclude": [
     "node_modules",

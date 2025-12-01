@@ -18,12 +18,9 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // ← ESTA LÍNEA ES LA QUE FALTABA
   insumos       Insumo[]
-  recetas       RecetaPan[]
-  pedidos       Pedido[]
-
   refreshTokens RefreshToken[]
+  cajaDiaria    CajaDiaria[]
 }
 
 model RefreshToken {
@@ -32,64 +29,44 @@ model RefreshToken {
   token     String   @unique
   expiresAt DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Insumo {
-  id              Int      @id @default(autoincrement())
-  nombre          String
-  presentacion    String    // ej: "Bolsa 25kg"
-  cantidadCompra  Float     // ej: 25 (para bolsa de 25kg)
-  unidadMedida    String    // kg, lt, unidad
-  valorCompra     Int       // precio total pagado
-  costoPorUnidad  Float     // ← AUTOMÁTICO: valorCompra / cantidadCompra (por kg o lt)
-  userId          Int
-  createdAt       DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  presentacion   String      // ej: "Bolsa 25kg"
+  cantidadCompra Float       // ej: 25.0
+  unidadMedida   String      // kg, lt, unidad
+  valorCompra    Int         // precio total pagado
+  costoPorUnidad Float       // calculado automáticamente
+  userId         Int
+  createdAt      DateTime @default(now())
 
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  recetaItems     RecetaItem[]
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
-model RecetaPan {
-  id        Int           @id @default(autoincrement())
-  nombre    String        // ej: "Pan Copihue", "Marraqueta"
-  items     RecetaItem[]
-  userId    Int
-  user      User          @relation(fields: [userId], references: [id])
-
-  pedidos   Pedido[]
-}
-
-
-model RecetaItem {
-  id          Int       @id @default(autoincrement())
-  recetaId    Int
-  insumoId    Int
-  cantidad    Float     // gramos o ml por 1 pan
-  unidad      String    // siempre "g" o "ml"
-
-  receta      RecetaPan @relation(fields: [recetaId], references: [id], onDelete: Cascade)
-  insumo      Insumo   @relation(fields: [insumoId], references: [id])
-
-  @@unique([recetaId, insumoId])
-}
-
-model Pedido {
+model CajaDiaria {
   id            Int      @id @default(autoincrement())
-  cliente       String
-  cantidadPanes Int
-  recetaId      Int
-  costoTotal    Int
-  fecha         DateTime @default(now())
-  userId        Int
+  fecha         DateTime @unique
+  montoInicial  Int
+  efectivo      Int      @default(0)
+  tarjeta       Int      @default(0)
+  transferencia Int      @default(0)
+  totalFinal    Int
+  estado        String   @default("ABIERTA")
+  notas         String?
 
+  userId        Int
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  receta        RecetaPan @relation(fields: [recetaId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([userId])
-  @@index([recetaId])
+  @@index([fecha])
 }
