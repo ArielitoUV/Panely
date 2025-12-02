@@ -1,25 +1,53 @@
-// backend/services/auth-service/src/routes.ts
+import { Router } from 'express';
+import { register, login, me } from './authController';
+import { authenticateToken } from './authService';
 
-import { Router } from "express";
-import { register, login } from "./authController";
-import { crearInsumo, listarInsumos } from "./insumoController";
-import { abrirCaja, obtenerCajaHoy, cerrarCaja } from "./cajaController";
-import { authenticateToken } from "../../../shared/middleware";
+import { 
+  getInsumos, 
+  createInsumo, 
+  deleteInsumo 
+} from './insumoController';
+
+import { 
+  getRecetas, 
+  createReceta, 
+  deleteReceta,
+  createPedido 
+} from './recetaController';
+
+import { 
+  getCajaDiaria, 
+  abrirCaja, 
+  cerrarCaja, 
+  registrarMovimiento, 
+  getHistorialCajas 
+} from './cajaController';
 
 const router = Router();
 
-// AUTH
-router.post("/register", register);
-router.post("/login", login);
+// --- Auth ---
+router.post('/auth/register', register);
+router.post('/auth/login', login);
+router.get('/auth/me', authenticateToken, me);
 
-// INSUMOS
-router.post("/insumos", authenticateToken, crearInsumo);
-router.get("/insumos", authenticateToken, listarInsumos);
+// --- Insumos ---
+router.get('/insumos', authenticateToken, getInsumos);
+router.post('/insumos', authenticateToken, createInsumo);
+router.delete('/insumos/:id', authenticateToken, deleteInsumo);
 
-// CAJA DIARIA ← TIENE QUE ESTAR EXACTAMENTE ASÍ
-router.get("/caja/hoy", authenticateToken, obtenerCajaHoy);
-router.post("/caja/abrir", authenticateToken, abrirCaja);
-router.put("/caja/cerrar/:id", authenticateToken, cerrarCaja);
+// --- Recetas ---
+router.get('/recetas', authenticateToken, getRecetas);
+router.post('/recetas', authenticateToken, createReceta);
+router.delete('/recetas/:id', authenticateToken, deleteReceta);
 
+// --- Pedidos ---
+router.post('/pedidos', authenticateToken, createPedido);
+
+// --- Caja ---
+router.get('/caja/hoy', authenticateToken, getCajaDiaria);
+router.post('/caja/abrir', authenticateToken, abrirCaja);
+router.post('/caja/cerrar', authenticateToken, cerrarCaja);
+router.post('/caja/movimiento', authenticateToken, registrarMovimiento);
+router.get('/caja/historial', authenticateToken, getHistorialCajas);
 
 export default router;

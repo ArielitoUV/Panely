@@ -1,134 +1,72 @@
-// backend/services/auth-service/src/cajaController.ts
+import { Request, Response } from 'express';
+import { prisma } from './database';
 
-import { PrismaClient } from "@prisma/client"
-const prisma = new PrismaClient()
+export const getCajaDiaria = async (req: Request, res: Response) => {
+    try {
+        // @ts-ignore
+        const userId = req.user?.id;
+        const hoy = new Date();
+        hoy.setHours(0,0,0,0);
+        
+        const caja = await prisma.cajaDiaria.findFirst({
+            where: { userId, fecha: { gte: hoy } }
+        });
+        res.json(caja || null);
+    } catch (e) { res.status(500).json({error: "Error"}); }
+};
 
-// ========================================
-// ABRIR CAJA
-// ========================================
-export const abrirCaja = async (req: any, res: any) => {
-  try {
-    const { montoInicial } = req.body
+export const abrirCaja = async (req: Request, res: Response) => {
+    try {
+        // @ts-ignore
+        const userId = req.user?.id;
+        const { montoInicial } = req.body;
+        
+        // Cerrar cajas previas abiertas por seguridad
+        await prisma.cajaDiaria.updateMany({
+            where: { userId, estado: "ABIERTA" },
+            data: { estado: "CERRADA" }
+        });
 
-    // ACEPTA CUALQUIERA DE LAS TRES FORMAS COMUNES QUE GUARDAN EL USER ID
-    const userId = req.user?.id ?? req.user?.userId ?? req.userId
+        const caja = await prisma.cajaDiaria.create({
+            data: {
+                userId,
+                montoInicial: Number(montoInicial),
+                fecha: new Date(),
+                totalFinal: Number(montoInicial),
+                estado: "ABIERTA"
+            }
+        });
+        res.json(caja);
+    } catch (e) { res.status(500).json({error: "Error"}); }
+};
 
-    if (!userId) {
-      return res.status(401).json({ error: "No estás autenticado" })
-    }
+export const cerrarCaja = async (req: Request, res: Response) => {
+    try {
+        // @ts-ignore
+        const userId = req.user?.id;
+        const caja = await prisma.cajaDiaria.findFirst({
+            where: { userId, estado: "ABIERTA" }
+        });
+        if(!caja) return res.status(400).json({error: "No hay caja abierta"});
 
-    if (!montoInicial || montoInicial < 0) {
-      return res.status(400).json({ error: "Monto inicial inválido" })
-    }
+        const cerrada = await prisma.cajaDiaria.update({
+            where: { id: caja.id },
+            data: { estado: "CERRADA" }
+        });
+        res.json(cerrada);
+    } catch (e) { res.status(500).json({error: "Error"}); }
+};
 
-    const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
+export const registrarMovimiento = async (req: Request, res: Response) => {
+    res.json({ message: "OK" });
+};
 
-    // Verificar si ya existe caja hoy
-    const existe = await prisma.cajaDiaria.findFirst({
-      where: {
-        userId,
-        fecha: { gte: hoy }
-      }
-    })
-
-    if (existe) {
-      return res.status(400).json({ error: "Ya abriste caja hoy" })
-    }
-
-    const caja = await prisma.cajaDiaria.create({
-      data: {
-        fecha: hoy,
-        montoInicial,
-        totalFinal: montoInicial,
-        estado: "ABIERTA",
-        user: { connect: { id: userId } }
-      }
-    })
-
-    return res.json({ caja })
-  } catch (err: any) {
-    console.error("Error abriendo caja:", err)
-    return res.status(500).json({ error: "Error al abrir la caja" })
-  }
-}
-
-// ========================================
-// OBTENER CAJA DE HOY
-// ========================================
-export const obtenerCajaHoy = async (req: any, res: any) => {
-  try {
-    const userId = req.user?.id ?? req.user?.userId ?? req.userId
-
-    if (!userId) {
-      return res.status(401).json({ error: "No autenticado" })
-    }
-
-    const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
-
-    const caja = await prisma.cajaDiaria.findFirst({
-      where: {
-        userId,
-        fecha: { gte: hoy }
-      }
-    })
-
-    return res.json({ caja })
-  } catch (err) {
-    console.error("Error cargando caja:", err)
-    return res.status(500).json({ error: "Error al cargar la caja" })
-  }
-}
-
-// ========================================
-// CERRAR CAJA
-// ========================================
-export const cerrarCaja = async (req: any, res: any) => {
-  try {
-    const cajaId = parseInt(req.params.id)
-    const { efectivo = 0, tarjeta = 0, transferencia = 0 } = req.body
-
-    const userId = req.user?.id ?? req.user?.userId ?? req.userId
-
-    if (!userId) {
-      return res.status(401).json({ error: "No autenticado" })
-    }
-
-    const caja = await prisma.cajaDiaria.findUnique({
-      where: { id: cajaId }
-    })
-
-    if (!caja) {
-      return res.status(404).json({ error: "Caja no encontrada" })
-    }
-
-    if (caja.userId !== userId) {
-      return res.status(403).json({ error: "No tienes permiso para cerrar esta caja" })
-    }
-
-    if (caja.estado === "CERRADA") {
-      return res.status(400).json({ error: "La caja ya está cerrada" })
-    }
-
-    const totalFinal = caja.montoInicial + efectivo + tarjeta + transferencia
-
-    const actualizada = await prisma.cajaDiaria.update({
-      where: { id: cajaId },
-      data: {
-        efectivo,
-        tarjeta,
-        transferencia,
-        totalFinal,
-        estado: "CERRADA"
-      }
-    })
-
-    return res.json({ caja: actualizada })
-  } catch (err: any) {
-    console.error("Error cerrando caja:", err)
-    return res.status(500).json({ error: "Error al cerrar la caja" })
-  }
-}
-
-
+export const getHistorialCajas = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const userId = req.user?.id;
+    const historial = await prisma.cajaDiaria.findMany({
+        where: { userId },
+        orderBy: { fecha: 'desc' }
+    });
+    res.json(historial);
+};

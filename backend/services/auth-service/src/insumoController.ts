@@ -1,82 +1,69 @@
-// backend/services/auth-service/src/insumoController.ts
+import { Request, Response } from 'express';
+import { prisma } from './database';
 
-import { Request, Response } from "express";
-import { prisma } from "./database"; // asegúrate de que esta ruta sea correcta
-
-export const crearInsumo = async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-
-  const {
-    nombre,
-    presentacion,
-    cantidadCompra,   // ← nuevo: cuántos kg/lt compraste
-    unidadMedida,     // ← kg, lt, unidad
-    valorCompra       // ← precio total que pagaste
-  } = req.body;
-
-  // Validación
-  if (!nombre || !presentacion || !cantidadCompra || !unidadMedida || !valorCompra) {
-    return res.status(400).json({ error: "Faltan datos obligatorios" });
-  }
-
-  const cantidad = parseFloat(cantidadCompra);
-  const precioTotal = parseInt(valorCompra);
-
-  if (cantidad <= 0 || precioTotal <= 0) {
-    return res.status(400).json({ error: "Cantidad y precio deben ser mayores a 0" });
-  }
-
-  // Calculamos el costo por kg/lt/unidad
-  const costoPorUnidad = Math.round(precioTotal / cantidad);
-
+// OBTENER
+export const getInsumos = async (req: Request, res: Response) => {
   try {
+    // @ts-ignore
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'No autorizado' });
+
+    const insumos = await prisma.insumo.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(insumos);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener insumos' });
+  }
+};
+
+// CREAR (Con lógica de gramos)
+export const createInsumo = async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const userId = req.user?.id;
+    const { nombre, presentacion, cantidadCompra, unidadMedida, valorCompra } = req.body;
+
+    const cantidad = parseFloat(cantidadCompra);
+    const valor = parseInt(valorCompra);
+    
+    // Conversión
+    let stockGramos = 0;
+    if (unidadMedida === 'kg') {
+      stockGramos = cantidad * 1000;
+    } else {
+      stockGramos = cantidad;
+    }
+
+    const costoPorGramo = stockGramos > 0 ? (valor / stockGramos) : 0;
+
     const insumo = await prisma.insumo.create({
       data: {
         nombre,
         presentacion,
         cantidadCompra: cantidad,
         unidadMedida,
-        valorCompra: precioTotal,
-        costoPorUnidad,        // ← guardamos el cálculo automático
-        userId: userId!,
-      },
-    });
-
-    res.status(201).json({
-      success: true,
-      insumo: {
-        ...insumo,
-        costoPorUnidad: insumo.costoPorUnidad // para que lo muestre bonito
+        valorCompra: valor,
+        stockGramos,
+        costoPorGramo,
+        userId
       }
     });
-  } catch (err: any) {
-    console.error("Error creando insumo:", err);
-    res.status(500).json({ error: "Error al guardar el insumo" });
+
+    res.json(insumo);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear insumo' });
   }
 };
 
-export const listarInsumos = async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-
+// ELIMINAR
+export const deleteInsumo = async (req: Request, res: Response) => {
   try {
-    const insumos = await prisma.insumo.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        nombre: true,
-        presentacion: true,
-        cantidadCompra: true,
-        unidadMedida: true,
-        valorCompra: true,
-        costoPorUnidad: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    res.json({ success: true, insumos });
-  } catch (err: any) {
-    console.error("Error listando insumos:", err);
-    res.status(500).json({ error: "Error al cargar insumos" });
+    const { id } = req.params;
+    await prisma.insumo.delete({ where: { id: Number(id) } });
+    res.json({ message: 'Eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar' });
   }
 };

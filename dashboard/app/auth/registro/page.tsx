@@ -9,6 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { UserPlus, Eye, EyeOff, Loader2 } from "lucide-react"
 
+// --- CONSTANTE API ---
+// Aseguramos que apunte al puerto correcto del backend
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
 export default function RegistroPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
@@ -38,7 +42,9 @@ export default function RegistroPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:8080/api/auth/register", {
+      console.log(`Enviando a: ${API_URL}/auth/register`); 
+
+      const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -51,14 +57,33 @@ export default function RegistroPage() {
         }),
       })
 
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("El servidor no respondió correctamente. Verifica que el backend esté corriendo en el puerto 3001.");
+      }
+
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error || "Error al registrarse")
 
-      // ÉXITO → ir al login con mensaje bonito
-      router.push("/auth/iniciar-sesion?registro=exito")
+      // ÉXITO
+      if (data.accessToken) {
+          localStorage.setItem("accessToken", data.accessToken)
+          localStorage.setItem("refreshToken", data.refreshToken)
+          
+          // --- PROTECCIÓN CONTRA UNDEFINED ---
+          if (data.user) {
+            localStorage.setItem("user", JSON.stringify(data.user))
+          }
+          
+          router.push("/dashboard")
+      } else {
+          router.push("/auth/iniciar-sesion?registro=exito")
+      }
+      
     } catch (err: any) {
-      setError(err.message || "Error de conexión")
+      console.error(err);
+      setError(err.message || "Error de conexión con el servidor")
     } finally {
       setIsLoading(false)
     }
@@ -168,7 +193,7 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+              {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">{error}</p>}
 
               <Button type="submit" className="w-full h-12 text-lg" disabled={isLoading}>
                 {isLoading ? (

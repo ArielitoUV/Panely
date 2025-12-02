@@ -17,8 +17,11 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useToast } from "@/components/ui/use-toast"
 
-// Tipos
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+// Tipos para TypeScript
 interface Insumo {
   id: number
   nombre: string
@@ -26,28 +29,23 @@ interface Insumo {
   costoPorGramo: number
 }
 
-interface IngredienteReceta {
-  insumoId: number
-  nombre: string // Para mostrar en UI
-  cantidadGramos: number
-  costoPorGramo: number // Para calcular
-}
-
 interface Receta {
   id: number
   nombre: string
-  cantidadBase: number // Para cuantos panes es esta receta (Ej: 16)
-  ingredientes: IngredienteReceta[]
+  cantidadBase: number
+  ingredientes: any[]
 }
 
 export default function CalculoInsumosPage() {
-  // Datos
+  const { toast } = useToast()
+  
+  // ESTADOS DE DATOS
   const [insumosDisponibles, setInsumosDisponibles] = useState<Insumo[]>([])
   const [recetas, setRecetas] = useState<Receta[]>([])
   
-  // Estado Modal Receta
+  // ESTADOS MODAL GESTION RECETA
   const [isRecetaOpen, setIsRecetaOpen] = useState(false)
-  const [newReceta, setNewReceta] = useState<{nombre: string, cantidadBase: string, ingredientes: IngredienteReceta[]}>({
+  const [newReceta, setNewReceta] = useState<{nombre: string, cantidadBase: string, ingredientes: any[]}>({
     nombre: "",
     cantidadBase: "",
     ingredientes: []
@@ -55,67 +53,97 @@ export default function CalculoInsumosPage() {
   const [selectedInsumoId, setSelectedInsumoId] = useState("")
   const [selectedInsumoGramos, setSelectedInsumoGramos] = useState("")
 
-  // Estado Calculadora
+  // ESTADOS CALCULADORA
+  const [nombreCliente, setNombreCliente] = useState("")
   const [cantidadSolicitada, setCantidadSolicitada] = useState("")
   const [recetaSeleccionadaId, setRecetaSeleccionadaId] = useState("")
   const [resultado, setResultado] = useState<{ingredientes: any[], totalCosto: number, sugerido: number} | null>(null)
 
-  // Cargar datos (Simulado - conectar con API real)
+  // 1. CARGA INICIAL
   useEffect(() => {
-    const loadedInsumos = localStorage.getItem("insumos_db")
-    if (loadedInsumos) setInsumosDisponibles(JSON.parse(loadedInsumos))
+    const fetchData = async () => {
+        try {
+            const token = localStorage.getItem("accessToken")
+            
+            // Cargar Insumos
+            const resInsumos = await fetch(`${API_URL}/insumos`, { headers: { Authorization: `Bearer ${token}` } })
+            if(resInsumos.ok) setInsumosDisponibles(await resInsumos.json())
 
-    const loadedRecetas = localStorage.getItem("recetas_db")
-    if (loadedRecetas) setRecetas(JSON.parse(loadedRecetas))
+            // Cargar Recetas
+            const resRecetas = await fetch(`${API_URL}/recetas`, { headers: { Authorization: `Bearer ${token}` } })
+            if(resRecetas.ok) setRecetas(await resRecetas.json())
+
+        } catch (e) {
+            console.error("Error al cargar datos", e)
+        }
+    }
+    fetchData()
   }, [])
 
-  // --- LÓGICA GESTIÓN RECETAS ---
-  
+  // 2. AGREGAR INGREDIENTE (EN MEMORIA PARA LA NUEVA RECETA)
   const agregarIngredienteAReceta = () => {
     if (!selectedInsumoId || !selectedInsumoGramos) return
     
     const insumo = insumosDisponibles.find(i => i.id.toString() === selectedInsumoId)
     if (!insumo) return
 
-    const nuevoIngrediente: IngredienteReceta = {
-      insumoId: insumo.id,
-      nombre: insumo.nombre,
-      cantidadGramos: parseFloat(selectedInsumoGramos),
-      costoPorGramo: insumo.costoPorGramo
-    }
-
     setNewReceta(prev => ({
       ...prev,
-      ingredientes: [...prev.ingredientes, nuevoIngrediente]
+      ingredientes: [...prev.ingredientes, {
+        insumoId: insumo.id,
+        nombre: insumo.nombre, // Solo visual
+        cantidadGramos: parseFloat(selectedInsumoGramos)
+      }]
     }))
     
     setSelectedInsumoId("")
     setSelectedInsumoGramos("")
   }
 
-  const guardarReceta = () => {
+  // 3. GUARDAR LA RECETA EN LA BD
+  const guardarRecetaBD = async () => {
     if (!newReceta.nombre || !newReceta.cantidadBase || newReceta.ingredientes.length === 0) {
-      alert("Completa la receta (nombre, cantidad base y al menos 1 ingrediente)")
+      alert("Completa la receta (nombre, base y al menos 1 ingrediente)")
       return
     }
 
-    const recetaGuardar: Receta = {
-      id: Date.now(),
-      nombre: newReceta.nombre,
-      cantidadBase: parseInt(newReceta.cantidadBase),
-      ingredientes: newReceta.ingredientes
-    }
+    try {
+        const token = localStorage.getItem("accessToken")
+        const res = await fetch(`${API_URL}/recetas`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(newReceta)
+        })
 
-    const updatedRecetas = [...recetas, recetaGuardar]
-    setRecetas(updatedRecetas)
-    localStorage.setItem("recetas_db", JSON.stringify(updatedRecetas))
-    
-    setIsRecetaOpen(false)
-    setNewReceta({ nombre: "", cantidadBase: "", ingredientes: [] })
+        if(res.ok) {
+            const creada = await res.json()
+            setRecetas([...recetas, creada])
+            toast({ title: "Receta creada", description: `Se creó la receta ${newReceta.nombre}` })
+            setIsRecetaOpen(false)
+            setNewReceta({ nombre: "", cantidadBase: "", ingredientes: [] })
+        }
+    } catch (e) {
+        toast({ title: "Error", description: "No se pudo guardar la receta", variant: "destructive" })
+    }
   }
 
-  // --- LÓGICA CÁLCULO DE PEDIDO ---
+  const eliminarReceta = async (id: number) => {
+      if(!confirm("¿Borrar esta receta?")) return;
+      const token = localStorage.getItem("accessToken")
+      try {
+        await fetch(`${API_URL}/recetas/${id}`, { 
+            method: "DELETE", headers: { Authorization: `Bearer ${token}` }
+        })
+        setRecetas(recetas.filter(r => r.id !== id))
+        setRecetaSeleccionadaId("")
+        setResultado(null)
+      } catch (e) { console.error(e) }
+  }
 
+  // 4. CALCULAR PEDIDO
   const calcularPedido = () => {
     if (!recetaSeleccionadaId || !cantidadSolicitada) return
 
@@ -123,25 +151,28 @@ export default function CalculoInsumosPage() {
     if (!receta) return
 
     const cantidad = parseInt(cantidadSolicitada)
-    const factor = cantidad / receta.cantidadBase // Ej: Quiero 100, Receta es para 16. Factor = 6.25
+    const factor = cantidad / receta.cantidadBase 
 
     let totalCosto = 0
     
-    const ingredientesCalculados = receta.ingredientes.map(ing => {
+    const ingredientesCalculados = receta.ingredientes.map((ing: any) => {
+      // El backend devuelve el insumo anidado en 'ing.insumo'
+      const insumoData = ing.insumo 
+      if (!insumoData) return null
+
       const cantidadNecesaria = ing.cantidadGramos * factor
-      const costoIngrediente = cantidadNecesaria * ing.costoPorGramo
+      const costoIngrediente = cantidadNecesaria * insumoData.costoPorGramo
       
       totalCosto += costoIngrediente
 
       return {
-        nombre: ing.nombre,
+        nombre: insumoData.nombre,
         cantidad: cantidadNecesaria,
         costo: costoIngrediente
       }
-    })
+    }).filter(Boolean)
 
-    // Margen de ganancia (60% ejemplo)
-    const precioVentaSugerido = totalCosto * 1.6 
+    const precioVentaSugerido = totalCosto * 1.6 // Margen del 60%
 
     setResultado({
       ingredientes: ingredientesCalculados,
@@ -150,9 +181,46 @@ export default function CalculoInsumosPage() {
     })
   }
 
+  // 5. GUARDAR PEDIDO EN LA BD
+  const guardarPedidoBD = async () => {
+      if(!resultado || !nombreCliente) {
+          alert("Ingresa el nombre del cliente primero")
+          return
+      }
+
+      try {
+        const token = localStorage.getItem("accessToken")
+        const payload = {
+            nombreCliente,
+            cantidadPanes: parseInt(cantidadSolicitada),
+            montoTotal: Math.round(resultado.sugerido),
+            recetaId: parseInt(recetaSeleccionadaId),
+            resumen: JSON.stringify(resultado.ingredientes)
+        }
+
+        const res = await fetch(`${API_URL}/pedidos`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        })
+
+        if (res.ok) {
+            toast({ title: "Pedido Guardado", description: "Se registró la orden correctamente" })
+            setResultado(null)
+            setNombreCliente("")
+            setCantidadSolicitada("")
+        }
+      } catch(e) {
+          toast({ title: "Error", description: "Fallo al guardar", variant: "destructive" })
+      }
+  }
+
   return (
     <div className="space-y-6 p-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
            <h1 className="text-3xl font-bold flex items-center gap-2">
             <Calculator className="h-8 w-8 text-orange-500" />
@@ -198,10 +266,10 @@ export default function CalculoInsumosPage() {
               </div>
 
               <div className="border rounded-lg p-4 bg-muted/30">
-                <h4 className="text-sm font-medium mb-3">Agregar Ingredientes</h4>
+                <h4 className="text-sm font-medium mb-3">Agregar Ingredientes (Desde Inventario)</h4>
                 <div className="flex gap-2 items-end">
                   <div className="flex-1 space-y-2">
-                    <Label className="text-xs">Insumo (Inventario)</Label>
+                    <Label className="text-xs">Insumo</Label>
                     <Select value={selectedInsumoId} onValueChange={setSelectedInsumoId}>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar..." />
@@ -227,7 +295,6 @@ export default function CalculoInsumosPage() {
                   </Button>
                 </div>
 
-                {/* Lista de ingredientes agregados a la receta */}
                 <div className="mt-4 space-y-2">
                   {newReceta.ingredientes.map((ing, idx) => (
                     <div key={idx} className="flex justify-between items-center text-sm bg-background p-2 rounded border">
@@ -253,7 +320,7 @@ export default function CalculoInsumosPage() {
             </div>
 
             <DialogFooter>
-              <Button onClick={guardarReceta} className="bg-orange-600">Guardar Receta</Button>
+              <Button onClick={guardarRecetaBD} className="bg-orange-600">Guardar Receta</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -267,19 +334,34 @@ export default function CalculoInsumosPage() {
           </CardHeader>
           <CardContent className="space-y-4">
              <div className="space-y-2">
+                <Label>Nombre Cliente</Label>
+                <Input 
+                    placeholder="Ej: Restaurant El Centro" 
+                    value={nombreCliente}
+                    onChange={(e) => setNombreCliente(e.target.value)}
+                />
+             </div>
+             <div className="space-y-2">
                 <Label>Seleccionar Receta</Label>
-                <Select value={recetaSeleccionadaId} onValueChange={setRecetaSeleccionadaId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="¿Qué vamos a hornear?" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {recetas.map(r => (
-                      <SelectItem key={r.id} value={r.id.toString()}>
-                        {r.nombre} (Base: {r.cantidadBase} un.)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                    <Select value={recetaSeleccionadaId} onValueChange={setRecetaSeleccionadaId}>
+                    <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="¿Qué vamos a hornear?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {recetas.map(r => (
+                        <SelectItem key={r.id} value={r.id.toString()}>
+                            {r.nombre} (Base: {r.cantidadBase} un.)
+                        </SelectItem>
+                        ))}
+                    </SelectContent>
+                    </Select>
+                    {recetaSeleccionadaId && (
+                        <Button variant="destructive" size="icon" onClick={() => eliminarReceta(parseInt(recetaSeleccionadaId))}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    )}
+                </div>
              </div>
              
              <div className="space-y-2">
@@ -317,11 +399,11 @@ export default function CalculoInsumosPage() {
                    </TableRow>
                  </TableHeader>
                  <TableBody>
-                   {resultado.ingredientes.map((ing, idx) => (
+                   {resultado.ingredientes.map((ing: any, idx: number) => (
                      <TableRow key={idx}>
                        <TableCell>{ing.nombre}</TableCell>
                        <TableCell className="text-right font-medium">
-                         {(ing.cantidad).toLocaleString()} gr
+                         {Math.ceil(ing.cantidad).toLocaleString()} gr
                          {ing.cantidad >= 1000 && <span className="text-xs text-muted-foreground ml-1">({(ing.cantidad/1000).toFixed(2)} kg)</span>}
                        </TableCell>
                        <TableCell className="text-right text-muted-foreground">
@@ -343,11 +425,11 @@ export default function CalculoInsumosPage() {
                  </div>
                  <div className="flex justify-between text-sm text-muted-foreground">
                    <span>Valor Cobro Total (Sugerido):</span>
-                   <span>${Math.round(resultado.sugerido).toLocaleString()}</span>
+                   <span className="font-bold text-orange-600 text-lg">${Math.round(resultado.sugerido).toLocaleString()}</span>
                  </div>
                </div>
                
-               <Button className="w-full bg-green-600 hover:bg-green-700">
+               <Button onClick={guardarPedidoBD} className="w-full bg-green-600 hover:bg-green-700">
                  <Save className="mr-2 h-4 w-4" /> Guardar Pedido
                </Button>
              </CardContent>
