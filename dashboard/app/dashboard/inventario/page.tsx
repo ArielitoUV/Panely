@@ -1,186 +1,223 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Plus } from "lucide-react"
+import { Plus, Search, Trash2, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-
-interface Insumo {
-  id: number
-  nombre: string
-  presentacion: string
-  cantidadCompra: number
-  unidadMedida: string
-  valorCompra: number
-  costoPorUnidad: number
-}
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function InventarioPage() {
-  const [insumos, setInsumos] = useState<Insumo[]>([])
+  const [insumos, setInsumos] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [isOpen, setIsOpen] = useState(false)
-  const [user, setUser] = useState<any>(null)
+  const [isAddOpen, setIsAddOpen] = useState(false)
 
-  const [form, setForm] = useState({
+  // Estados del formulario
+  const [formData, setFormData] = useState({
     nombre: "",
     presentacion: "",
     cantidadCompra: "",
-    unidadMedida: "",
+    unidadMedida: "kg", // Por defecto kg
     valorCompra: "",
   })
 
+  // Simulación de carga (reemplazar con fetch real)
   useEffect(() => {
-    const u = localStorage.getItem("user")
-    if (u) setUser(JSON.parse(u))
-    cargarInsumos()
+    const saved = localStorage.getItem("insumos_db")
+    if (saved) setInsumos(JSON.parse(saved))
   }, [])
 
-  const cargarInsumos = async () => {
-    const token = localStorage.getItem("accessToken")
-    if (!token) return
+  const handleSave = () => {
+    // 1. Validar
+    if (!formData.nombre || !formData.cantidadCompra || !formData.valorCompra) return
 
-    const res = await fetch("http://localhost:3001/insumos", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const data = await res.json()
-    if (data.success) setInsumos(data.insumos || [])
+    const cantidad = parseFloat(formData.cantidadCompra)
+    const valor = parseInt(formData.valorCompra)
+    
+    // 2. Lógica de Conversión a Gramos (CORE DEL PEDIDO)
+    let gramos = 0
+    if (formData.unidadMedida === "kg") {
+      gramos = cantidad * 1000
+    } else {
+      gramos = cantidad // Si son gramos, se queda igual
+    }
+
+    // 3. Calcular Costo por Gramo
+    const costoGramo = valor / gramos
+
+    const nuevoInsumo = {
+      id: Date.now(),
+      ...formData,
+      cantidadCompra: cantidad,
+      valorCompra: valor,
+      stockGramos: gramos,      // Columna calculada
+      costoPorGramo: costoGramo // Columna calculada
+    }
+
+    const updated = [...insumos, nuevoInsumo]
+    setInsumos(updated)
+    localStorage.setItem("insumos_db", JSON.stringify(updated)) // Guardar (simulado)
+    
+    setIsAddOpen(false)
+    setFormData({ nombre: "", presentacion: "", cantidadCompra: "", unidadMedida: "kg", valorCompra: "" })
   }
 
-  const guardarInsumo = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const token = localStorage.getItem("accessToken")
-    if (!token) return
-
-    await fetch("http://localhost:3001/insumos", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        nombre: form.nombre,
-        presentacion: form.presentacion,
-        cantidadCompra: parseFloat(form.cantidadCompra),
-        unidadMedida: form.unidadMedida,
-        valorCompra: parseInt(form.valorCompra),
-      })
-    })
-
-    setIsOpen(false)
-    setForm({ nombre: "", presentacion: "", cantidadCompra: "", unidadMedida: "", valorCompra: "" })
-    cargarInsumos()
+  const handleDelete = (id: number) => {
+    const updated = insumos.filter(i => i.id !== id)
+    setInsumos(updated)
+    localStorage.setItem("insumos_db", JSON.stringify(updated))
   }
 
-  const filtered = insumos.filter(i => 
+  const filteredInsumos = insumos.filter(i => 
     i.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
     <div className="space-y-6 p-6">
-      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Inventario de Insumos</h1>
-          <p className="text-muted-foreground">Bienvenido, {user?.nombre || "Panadero"}</p>
+          <p className="text-muted-foreground">Gestiona tu materia prima (Todo estandarizado a gramos)</p>
         </div>
-
-        {/* BOTÓN AGREGAR - CORREGIDO */}
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        
+        {/* BOTÓN AGREGAR INSUMO */}
+        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-orange-500 hover:bg-orange-600">
-              <Plus className="mr-2 h-5 w-5" /> Agregar Insumo
+            <Button className="bg-orange-600 hover:bg-orange-700">
+              <Plus className="mr-2 h-4 w-4" /> Agregar Insumo
             </Button>
           </DialogTrigger>
-
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Nuevo Insumo</DialogTitle>
             </DialogHeader>
-            <form onSubmit={guardarInsumo} className="space-y-4">
-              <Input placeholder="Nombre (ej: Harina)" required value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} />
-              
-              <Input placeholder="Presentación (ej: Bolsa 25kg)" required value={form.presentacion} onChange={e => setForm({...form, presentacion: e.target.value})} />
-              
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Nombre</Label>
+                <Input 
+                  placeholder="Ej: Harina Selecta" 
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <Input 
-                  type="number" 
-                  step="0.01"
-                  placeholder="Cantidad comprada (ej: 25)" 
-                  required 
-                  value={form.cantidadCompra} 
-                  onChange={e => setForm({...form, cantidadCompra: e.target.value})} 
-                />
-                <Input 
-                  placeholder="Unidad (kg, lt, unidad)" 
-                  required 
-                  value={form.unidadMedida} 
-                  onChange={e => setForm({...form, unidadMedida: e.target.value})} 
-                />
+                <div className="space-y-2">
+                  <Label>Presentación</Label>
+                  <Input 
+                    placeholder="Ej: Saco" 
+                    value={formData.presentacion}
+                    onChange={(e) => setFormData({...formData, presentacion: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor Compra ($)</Label>
+                  <Input 
+                    type="number" 
+                    placeholder="Ej: 25000" 
+                    value={formData.valorCompra}
+                    onChange={(e) => setFormData({...formData, valorCompra: e.target.value})}
+                  />
+                </div>
               </div>
-
-              <Input 
-                type="number" 
-                placeholder="Precio total pagado ($)" 
-                required 
-                value={form.valorCompra} 
-                onChange={e => setForm({...form, valorCompra: e.target.value})} 
-              />
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit">Guardar Insumo</Button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Cantidad</Label>
+                  <Input 
+                    type="number" 
+                    placeholder="Ej: 25" 
+                    value={formData.cantidadCompra}
+                    onChange={(e) => setFormData({...formData, cantidadCompra: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unidad</Label>
+                  <Select 
+                    value={formData.unidadMedida} 
+                    onValueChange={(val) => setFormData({...formData, unidadMedida: val})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kg">Kilogramos (kg)</SelectItem>
+                      <SelectItem value="gr">Gramos (gr)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </form>
+              
+              {/* PREVISUALIZACIÓN DE LA CONVERSIÓN */}
+              {formData.cantidadCompra && (
+                <div className="bg-muted p-3 rounded-md text-sm text-center">
+                   Se guardará como: <strong>
+                     {formData.unidadMedida === 'kg' 
+                        ? parseFloat(formData.cantidadCompra) * 1000 
+                        : formData.cantidadCompra} gramos
+                   </strong>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button onClick={handleSave} className="bg-orange-600">Guardar en Inventario</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* BUSCADOR */}
-      <div className="relative">
-        <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+      <div className="flex items-center gap-2 bg-background/50 p-2 rounded-lg border w-full md:w-1/3">
+        <Search className="h-4 w-4 text-muted-foreground" />
         <Input 
           placeholder="Buscar insumo..." 
-          className="pl-10" 
-          value={searchTerm} 
-          onChange={e => setSearchTerm(e.target.value)} 
+          className="border-0 bg-transparent focus-visible:ring-0"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      {/* TABLA */}
-      <div className="bg-card rounded-lg border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-muted">
-            <tr>
-              <th className="text-left p-4">Insumo</th>
-              <th className="text-left p-4">Presentación</th>
-              <th className="text-left p-4">Costo por unidad</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="text-center py-12 text-muted-foreground">
-                  No hay insumos registrados aún
-                </td>
-              </tr>
-            ) : (
-              filtered.map(i => (
-                <tr key={i.id} className="border-t hover:bg-muted/50">
-                  <td className="p-4 font-medium">{i.nombre}</td>
-                  <td className="p-4 text-muted-foreground">{i.presentacion}</td>
-                  <td className="p-4 font-semibold text-orange-600">
-                    ${Math.round(i.costoPorUnidad).toLocaleString()} / {i.unidadMedida}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Presentación Original</TableHead>
+                <TableHead className="text-right">Stock (Gramos)</TableHead>
+                <TableHead className="text-right">Costo x Gramo</TableHead>
+                <TableHead className="w-[100px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredInsumos.map((insumo) => (
+                <TableRow key={insumo.id}>
+                  <TableCell className="font-medium">{insumo.nombre}</TableCell>
+                  <TableCell>{insumo.presentacion} ({insumo.cantidadCompra} {insumo.unidadMedida})</TableCell>
+                  <TableCell className="text-right font-mono text-blue-600">
+                    {insumo.stockGramos.toLocaleString()} gr
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    ${insumo.costoPorGramo.toFixed(2)}
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filteredInsumos.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    No hay insumos registrados
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

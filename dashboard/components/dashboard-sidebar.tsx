@@ -4,7 +4,18 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
-import { Home, TrendingUp, TrendingDown, Package, FileBarChart, Settings, X, ChevronRight, LogOut } from "lucide-react"
+import {
+  Home,
+  TrendingUp,
+  TrendingDown,
+  Package,
+  Calculator,
+  FileBarChart,
+  Settings,
+  X,
+  ChevronRight,
+  LogOut,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -15,6 +26,7 @@ const navigation = [
   { name: "Ingresos", href: "/dashboard/ingresos", icon: TrendingUp },
   { name: "Egresos", href: "/dashboard/egresos", icon: TrendingDown },
   { name: "Inventario", href: "/dashboard/inventario", icon: Package },
+    { name: "Cálculo Insumos", href: "/dashboard/calculoInsumo", icon: Calculator }, // <--- Módulo Nuevo
   { name: "Reportes", href: "/dashboard/reportes", icon: FileBarChart },
   { name: "Configuración", href: "/dashboard/configuracion", icon: Settings },
 ]
@@ -51,24 +63,19 @@ export function DashboardSidebar({ isOpen, setIsOpen }: DashboardSidebarProps) {
   }
 
   // Iniciales para el avatar
-  const initials = user
-    ? `${user.nombre.charAt(0)}${user.apellido.charAt(0)}`.toUpperCase()
-    : "US"
+  const initials = user ? `${user.nombre.charAt(0)}${user.apellido.charAt(0)}`.toUpperCase() : "US"
 
   return (
     <>
       {/* Overlay móvil */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={() => setIsOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsOpen(false)} />
       )}
 
       <aside
         className={cn(
           "fixed lg:static inset-y-0 left-0 z-50 w-72 bg-card border-r flex flex-col transition-transform duration-300",
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         {/* Header */}
@@ -101,7 +108,7 @@ export function DashboardSidebar({ isOpen, setIsOpen }: DashboardSidebarProps) {
                     "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all group",
                     isActive
                       ? "bg-primary text-primary-foreground shadow-md"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                 >
                   <item.icon className="h-5 w-5" />
@@ -127,9 +134,7 @@ export function DashboardSidebar({ isOpen, setIsOpen }: DashboardSidebarProps) {
               <p className="font-semibold text-sm truncate">
                 {user?.nombre} {user?.apellido}
               </p>
-              <p className="text-xs text-muted-foreground truncate">
-                {user?.nombreEmpresa || user?.email}
-              </p>
+              <p className="text-xs text-muted-foreground truncate">{user?.nombreEmpresa || user?.email}</p>
             </div>
           </div>
 

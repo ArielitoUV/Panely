@@ -37,15 +37,22 @@ model RefreshToken {
 model Insumo {
   id             Int      @id @default(autoincrement())
   nombre         String
-  presentacion   String      // ej: "Bolsa 25kg"
-  cantidadCompra Float       // ej: 25.0
-  unidadMedida   String      // kg, lt, unidad
-  valorCompra    Int         // precio total pagado
-  costoPorUnidad Float       // calculado automáticamente
+  presentacion   String   // Ej: "Saco 25kg"
+  
+  // Datos de compra originales (para referencia)
+  cantidadCompra Float    // Ej: 25.0
+  unidadMedida   String   // Solo "kg" o "gr"
+  valorCompra    Int      // Precio pagado por el total
+  
+  // NUEVAS COLUMNAS PARA CÁLCULO
+  stockGramos    Float    // Cantidad convertida a gramos (Ej: 25000)
+  costoPorGramo  Float    // Costo de 1 gramo
+  
   userId         Int
   createdAt      DateTime @default(now())
 
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enRecetas      IngredienteReceta[]
 
   @@index([userId])
 }
@@ -69,4 +76,71 @@ model CajaDiaria {
 
   @@index([userId])
   @@index([fecha])
+}
+
+
+// ... modelos existentes (User, RefreshToken, etc)
+
+model Insumo {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  presentacion   String
+  cantidadCompra Float
+  unidadMedida   String
+  valorCompra    Int
+  costoPorUnidad Float
+  userId         Int
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relación inversa: Un insumo puede estar en muchas recetas
+  enRecetas      IngredienteReceta[] 
+
+  @@index([userId])
+}
+
+model Receta {
+  id            Int      @id @default(autoincrement())
+  nombre        String   // Ej: "Hallulla", "Marraqueta"
+  cantidadBase  Int      // Ej: 16 (unidades que rinde esta receta)
+  userId        Int
+  
+  ingredientes  IngredienteReceta[]
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+  @@index([userId])
+}
+
+model IngredienteReceta {
+  id          Int    @id @default(autoincrement())
+  recetaId    Int
+  insumoId    Int
+  cantidadGramos Float // Cuántos gramos usa la receta base (Ej: 1000g de harina)
+
+  receta      Receta @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  insumo      Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@index([recetaId])
+  @@index([insumoId])
+}
+
+model Pedido {
+  id            Int      @id @default(autoincrement())
+  nombreCliente String
+  cantidadPanes Int
+  montoTotal    Int      // Costo + Margen
+  fecha         DateTime @default(now())
+  recetaId      Int
+  userId        Int
+  
+  // Opcional: Guardar un JSON con el snapshot de los costos en ese momento
+  detalleInsumos Json?    
+
+  receta        Receta   @relation(fields: [recetaId], references: [id])
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([recetaId])
 }
