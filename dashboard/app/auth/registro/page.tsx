@@ -1,22 +1,28 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { UserPlus, Eye, EyeOff, Loader2 } from "lucide-react"
+import { UserPlus, Eye, EyeOff, Loader2, Moon, Sun } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useTheme } from "next-themes"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
 
 export default function RegistroPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { setTheme, theme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -32,6 +38,10 @@ export default function RegistroPage() {
     password: "",
     confirmPassword: "",
   })
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,14 +121,42 @@ export default function RegistroPage() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center overflow-hidden p-4">
-      <div className="w-full max-w-5xl">
+    <div className="min-h-screen flex items-center justify-center overflow-hidden p-4 relative bg-background transition-colors duration-300">
+      {/* IMAGEN DE FONDO */}
+      <div className="absolute inset-0 z-0">
+         <Image 
+            src="/pancito2.jpg" 
+            alt="Fondo Panadería" 
+            fill 
+            className="object-cover blur-[2px] brightness-[0.6] dark:brightness-[0.3] transition-all duration-500"
+            priority
+         />
+      </div>
+
+      {/* BOTÓN DE CAMBIO DE TEMA */}
+      {mounted && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="absolute top-4 right-4 z-50 rounded-full shadow-md bg-background/80 backdrop-blur-sm hover:bg-accent"
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? (
+            <Sun className="h-[1.2rem] w-[1.2rem] transition-all" />
+          ) : (
+            <Moon className="h-[1.2rem] w-[1.2rem] transition-all" />
+          )}
+          <span className="sr-only">Cambiar tema</span>
+        </Button>
+      )}
+
+      <div className="w-full max-w-5xl z-10">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">Únete a Panely</h1>
-          <p className="text-muted-foreground mt-2">Crea tu cuenta y comienza a gestionar tu panadería</p>
+          <h1 className="text-3xl font-bold text-white drop-shadow-lg">Únete a Panely</h1>
+          <p className="text-zinc-100 mt-2 font-medium drop-shadow-md">Crea tu cuenta y comienza a gestionar tu panadería</p>
         </div>
 
-        <Card className="border-2 shadow-xl">
+        <Card className="border-2 shadow-xl bg-card/95 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-2xl text-center">Crear tu cuenta</CardTitle>
           </CardHeader>
@@ -235,7 +273,7 @@ export default function RegistroPage() {
                     </div>
                   )}
 
-                  <Button type="submit" className="w-full h-10 mt-6" disabled={isLoading}>
+                  <Button type="submit" className="w-full h-10 mt-6 bg-orange-600 hover:bg-orange-700 text-white" disabled={isLoading}>
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -251,7 +289,7 @@ export default function RegistroPage() {
 
                   <p className="text-xs text-muted-foreground text-center mt-4">
                     ¿Ya tienes cuenta?{" "}
-                    <Link href="/auth/iniciar-sesion" className="text-primary font-medium hover:underline">
+                    <Link href="/auth/iniciar-sesion" className="text-orange-600 font-medium hover:underline">
                       Inicia sesión aquí
                     </Link>
                   </p>

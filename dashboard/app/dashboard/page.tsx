@@ -1,183 +1,197 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DollarSign, TrendingUp, TrendingDown, Wallet } from "lucide-react"
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area
+} from "recharts"
 
-const stats = [
-  {
-    title: "Ingresos Hoy",
-    value: "$12,450.00",
-    change: "+15.3%",
-    trend: "up",
-    icon: TrendingUp,
-    description: "vs ayer",
-  },
-  {
-    title: "Egresos Hoy",
-    value: "$4,230.00",
-    change: "+8.2%",
-    trend: "up",
-    icon: TrendingDown,
-    description: "vs ayer",
-  },
-  {
-    title: "Ganancias",
-    value: "$8,220.00",
-    change: "+22.5%",
-    trend: "up",
-    icon: DollarSign,
-    description: "hoy",
-  },
-  {
-    title: "Insumos Bajos",
-    value: "12",
-    change: "+3",
-    trend: "down",
-    icon: AlertTriangle,
-    description: "requieren atención",
-  },
-]
-
-const ultimosIngresos = [
-  {
-    id: "ING-001",
-    fecha: "2024-01-15",
-    hora: "14:30",
-    concepto: "Venta de productos",
-    categoria: "Ventas",
-    monto: "$2,450.00",
-    cliente: "Juan Pérez",
-    metodo: "Efectivo",
-  },
-  {
-    id: "ING-002",
-    fecha: "2024-01-15",
-    hora: "13:15",
-    concepto: "Servicio de consultoría",
-    categoria: "Servicios",
-    monto: "$5,000.00",
-    cliente: "María García",
-    metodo: "Transferencia",
-  },
-  {
-    id: "ING-003",
-    fecha: "2024-01-15",
-    hora: "11:45",
-    concepto: "Venta de productos",
-    categoria: "Ventas",
-    monto: "$1,200.00",
-    cliente: "Carlos López",
-    metodo: "Tarjeta",
-  },
-  {
-    id: "ING-004",
-    fecha: "2024-01-15",
-    hora: "10:20",
-    concepto: "Pago de factura",
-    categoria: "Cobros",
-    monto: "$3,800.00",
-    cliente: "Ana Martínez",
-    metodo: "Transferencia",
-  },
-  {
-    id: "ING-005",
-    fecha: "2024-01-14",
-    hora: "16:50",
-    concepto: "Venta de productos",
-    categoria: "Ventas",
-    monto: "$890.00",
-    cliente: "Pedro Sánchez",
-    metodo: "Efectivo",
-  },
-]
+// --- CONSTANTE API ---
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function DashboardPage() {
+  const [ingresosSemana, setIngresosSemana] = useState(0)
+  const [egresosSemana, setEgresosSemana] = useState(0)
+  const [ganancia, setGanancia] = useState(0)
+  const [datosGrafico, setDatosGrafico] = useState<any[]>([])
+
+  // Datos simulados para el gráfico inicial (mientras conectas la BD real de movimientos)
+  const datosSimulados = [
+    { name: 'Lun', ingresos: 4000, egresos: 2400 },
+    { name: 'Mar', ingresos: 3000, egresos: 1398 },
+    { name: 'Mié', ingresos: 2000, egresos: 9800 },
+    { name: 'Jue', ingresos: 2780, egresos: 3908 },
+    { name: 'Vie', ingresos: 1890, egresos: 4800 },
+    { name: 'Sáb', ingresos: 2390, egresos: 3800 },
+    { name: 'Dom', ingresos: 3490, egresos: 4300 },
+  ];
+
+  useEffect(() => {
+    // AQUÍ HARÍAS EL FETCH REAL A TUS ENDPOINTS DE INGRESOS/EGRESOS
+    // Por ahora, calculamos totales basados en la simulación para que veas el efecto visual
+    
+    const totalI = datosSimulados.reduce((acc, curr) => acc + curr.ingresos, 0)
+    const totalE = datosSimulados.reduce((acc, curr) => acc + curr.egresos, 0)
+    
+    setIngresosSemana(totalI)
+    setEgresosSemana(totalE)
+    setGanancia(totalI - totalE)
+    setDatosGrafico(datosSimulados)
+
+    /* LÓGICA REAL (Descomentar cuando tengas los endpoints /ingresos y /egresos listos)
+    const fetchData = async () => {
+      const token = localStorage.getItem("accessToken")
+      const [resIng, resEgr] = await Promise.all([
+         fetch(`${API_URL}/ingresos/semana`, { headers: { Authorization: `Bearer ${token}` } }),
+         fetch(`${API_URL}/egresos/semana`, { headers: { Authorization: `Bearer ${token}` } })
+      ])
+      // ... procesar datos ...
+    }
+    */
+  }, [])
+
+  // Formateador de moneda chilena
+  const formatoCLP = (valor: number) => {
+    return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(valor)
+  }
+
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-balance">Inicio</h1>
-        <p className="text-sm sm:text-base text-muted-foreground text-pretty">Resumen de tu negocio hoy</p>
+    <div className="space-y-6 p-6">
+      {/* Encabezado */}
+      <div className="flex flex-col space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">Resumen Semanal</h1>
+        <p className="text-muted-foreground">Visión general del rendimiento financiero de tu panadería.</p>
       </div>
 
-      {/* estadisticas */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title} className="transition-shadow hover:shadow-md">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-              <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                <stat.icon className="h-5 w-5 text-primary" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                <Badge variant={stat.trend === "up" ? "default" : "destructive"} className="gap-1 px-1.5 h-5 shrink-0">
-                  {stat.trend === "up" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {stat.change}
-                </Badge>
-                <span className="text-muted-foreground">{stat.description}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* 1. TRES TARJETAS DE RESUMEN */}
+      <div className="grid gap-4 md:grid-cols-3">
+        
+        {/* Tarjeta Ingresos */}
+        <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatoCLP(ingresosSemana)}</div>
+            <p className="text-xs text-muted-foreground">Acumulado esta semana</p>
+          </CardContent>
+        </Card>
 
-      {/* Tabla de Últimos Ingresos Registrados */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start sm:items-center justify-between gap-2 flex-col sm:flex-row">
-            <div className="space-y-1">
-              <CardTitle className="text-lg sm:text-xl">Últimos Ingresos Registrados</CardTitle>
-              <CardDescription className="text-sm">Historial reciente de ingresos</CardDescription>
+        {/* Tarjeta Egresos */}
+        <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-all">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Egresos Totales</CardTitle>
+            <TrendingDown className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{formatoCLP(egresosSemana)}</div>
+            <p className="text-xs text-muted-foreground">Gastos esta semana</p>
+          </CardContent>
+        </Card>
+
+        {/* Tarjeta Ganancia */}
+        <Card className={`border-l-4 shadow-sm hover:shadow-md transition-all ${ganancia >= 0 ? 'border-l-blue-500' : 'border-l-orange-500'}`}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ganancia Neta</CardTitle>
+            <Wallet className={`h-4 w-4 ${ganancia >= 0 ? 'text-blue-500' : 'text-orange-500'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${ganancia >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+              {formatoCLP(ganancia)}
             </div>
-            <Badge variant="secondary" className="shrink-0">
-              {ultimosIngresos.length} registros
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="whitespace-nowrap">ID</TableHead>
-                  <TableHead className="whitespace-nowrap">Fecha</TableHead>
-                  <TableHead className="whitespace-nowrap">Hora</TableHead>
-                  <TableHead className="whitespace-nowrap">Concepto</TableHead>
-                  <TableHead className="whitespace-nowrap">Categoría</TableHead>
-                  <TableHead className="whitespace-nowrap">Cliente</TableHead>
-                  <TableHead className="whitespace-nowrap">Método</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Monto</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ultimosIngresos.map((ingreso) => (
-                  <TableRow key={ingreso.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium whitespace-nowrap">{ingreso.id}</TableCell>
-                    <TableCell className="whitespace-nowrap">{ingreso.fecha}</TableCell>
-                    <TableCell className="whitespace-nowrap">{ingreso.hora}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{ingreso.concepto}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="whitespace-nowrap">
-                        {ingreso.categoria}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{ingreso.cliente}</TableCell>
-                    <TableCell className="whitespace-nowrap">{ingreso.metodo}</TableCell>
-                    <TableCell className="text-right font-semibold whitespace-nowrap text-primary">
-                      {ingreso.monto}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+            <p className="text-xs text-muted-foreground">Rentabilidad actual</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 2. SECCIÓN DE GRÁFICOS */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        
+        {/* Gráfico Principal: Balance Semanal (Barras) */}
+        <Card className="col-span-4 shadow-sm">
+          <CardHeader>
+            <CardTitle>Balance de Ingresos vs Egresos</CardTitle>
+          </CardHeader>
+          <CardContent className="pl-2">
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={datosGrafico}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#888888" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <YAxis
+                    stroke="#888888"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}
+                    itemStyle={{ color: 'var(--foreground)' }}
+                    formatter={(value: number) => [`$${value}`, '']}
+                  />
+                  <Bar dataKey="ingresos" name="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Gráfico Secundario: Tendencia de Ganancias (Área) */}
+        <Card className="col-span-3 shadow-sm">
+          <CardHeader>
+            <CardTitle>Tendencia de Ganancias</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={datosGrafico}>
+                  <defs>
+                    <linearGradient id="colorGanancia" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                     contentStyle={{ backgroundColor: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}
+                     formatter={(value: any, name: any, props: any) => {
+                        const gananciaDia = props.payload.ingresos - props.payload.egresos;
+                        return [`$${gananciaDia}`, 'Ganancia'];
+                     }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey={(data) => data.ingresos - data.egresos} 
+                    stroke="#3b82f6" 
+                    fillOpacity={1} 
+                    fill="url(#colorGanancia)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
