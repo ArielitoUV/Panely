@@ -1,20 +1,23 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { UserPlus, Eye, EyeOff, Loader2 } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
-// --- CONSTANTE API ---
-// Aseguramos que apunte al puerto correcto del backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
 
 export default function RegistroPage() {
   const router = useRouter()
+  const { toast } = useToast()
+
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -42,7 +45,7 @@ export default function RegistroPage() {
     }
 
     try {
-      console.log(`Enviando a: ${API_URL}/auth/register`); 
+      console.log(`Enviando a: ${API_URL}/auth/register`)
 
       const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -57,167 +60,205 @@ export default function RegistroPage() {
         }),
       })
 
-      const contentType = res.headers.get("content-type");
+      const contentType = res.headers.get("content-type")
       if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("El servidor no respondió correctamente. Verifica que el backend esté corriendo en el puerto 3001.");
+        throw new Error("El servidor no respondió correctamente (No es JSON).")
       }
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.error || "Error al registrarse")
-
-      // ÉXITO
-      if (data.accessToken) {
-          localStorage.setItem("accessToken", data.accessToken)
-          localStorage.setItem("refreshToken", data.refreshToken)
-          
-          // --- PROTECCIÓN CONTRA UNDEFINED ---
-          if (data.user) {
-            localStorage.setItem("user", JSON.stringify(data.user))
-          }
-          
-          router.push("/dashboard")
-      } else {
-          router.push("/auth/iniciar-sesion?registro=exito")
+      if (!res.ok) {
+        const mensaje = data.error || "Error al registrarse"
+        setError(mensaje)
+        toast({
+          variant: "destructive",
+          title: "No se pudo registrar",
+          description: mensaje,
+        })
+        return
       }
-      
+
+      toast({
+        title: "¡Registro Exitoso!",
+        description: "Bienvenido a Panely.",
+        className: "bg-green-600 text-white",
+      })
+
+      if (data.accessToken) {
+        localStorage.setItem("accessToken", data.accessToken)
+        localStorage.setItem("refreshToken", data.refreshToken)
+
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user))
+        }
+
+        setTimeout(() => router.push("/dashboard"), 1000)
+      } else {
+        router.push("/auth/iniciar-sesion?registro=exito")
+      }
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Error de conexión con el servidor")
+      console.error("Error crítico:", err)
+      const mensaje = err.message || "Error de conexión con el servidor"
+      setError(mensaje)
+      toast({
+        variant: "destructive",
+        title: "Error del Sistema",
+        description: mensaje,
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/20 p-4">
-      <div className="w-full max-w-md">
+    <div className="h-screen flex items-center justify-center overflow-hidden p-4">
+      <div className="w-full max-w-5xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">Crear tu cuenta</h1>
-          <p className="text-muted-foreground mt-2">Regístrate y empieza a gestionar tu panadería</p>
+          <h1 className="text-3xl font-bold">Únete a Panely</h1>
+          <p className="text-muted-foreground mt-2">Crea tu cuenta y comienza a gestionar tu panadería</p>
         </div>
 
         <Card className="border-2 shadow-xl">
           <CardHeader>
-            <CardTitle className="text-2xl text-center">Registro</CardTitle>
+            <CardTitle className="text-2xl text-center">Crear tu cuenta</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input
-                    required
-                    value={form.nombre}
-                    onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  />
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-sm text-muted-foreground border-b pb-2">Datos Personales</h3>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nombre</Label>
+                      <Input
+                        required
+                        value={form.nombre}
+                        onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Apellido</Label>
+                      <Input
+                        required
+                        value={form.apellido}
+                        onChange={(e) => setForm({ ...form, apellido: e.target.value })}
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Correo Electrónico</Label>
+                    <Input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Teléfono (opcional)</Label>
+                    <Input
+                      value={form.telefono}
+                      onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                      placeholder="+56912345678"
+                      className="h-9"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Nombre de tu Panadería</Label>
+                    <Input
+                      required
+                      value={form.nombreEmpresa}
+                      onChange={(e) => setForm({ ...form, nombreEmpresa: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Apellido</Label>
-                  <Input
-                    required
-                    value={form.apellido}
-                    onChange={(e) => setForm({ ...form, apellido: e.target.value })}
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label>Correo Electrónico</Label>
-                <Input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
-              </div>
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-sm text-muted-foreground border-b pb-2">Seguridad</h3>
 
-              <div className="space-y-2">
-                <Label>Teléfono (opcional)</Label>
-                <Input
-                  value={form.telefono}
-                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                  placeholder="+56912345678"
-                />
-              </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Contraseña</Label>
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={form.password}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        className="h-9 pr-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-9 w-9"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label>Nombre de tu Panadería</Label>
-                <Input
-                  required
-                  value={form.nombreEmpresa}
-                  onChange={(e) => setForm({ ...form, nombreEmpresa: e.target.value })}
-                />
-              </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Confirmar Contraseña</Label>
+                    <div className="relative">
+                      <Input
+                        type={showConfirm ? "text" : "password"}
+                        required
+                        value={form.confirmPassword}
+                        onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                        className="h-9 pr-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-9 w-9"
+                        onClick={() => setShowConfirm(!showConfirm)}
+                      >
+                        {showConfirm ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label>Contraseña</Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    minLength={6}
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {error && (
+                    <div className="bg-red-50 text-red-600 text-xs p-2.5 rounded-md border border-red-200 animate-in fade-in">
+                      {error}
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full h-10 mt-6" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creando cuenta...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Crear cuenta
+                      </>
+                    )}
                   </Button>
+
+                  <p className="text-xs text-muted-foreground text-center mt-4">
+                    ¿Ya tienes cuenta?{" "}
+                    <Link href="/auth/iniciar-sesion" className="text-primary font-medium hover:underline">
+                      Inicia sesión aquí
+                    </Link>
+                  </p>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label>Confirmar Contraseña</Label>
-                <div className="relative">
-                  <Input
-                    type={showConfirm ? "text" : "password"}
-                    required
-                    value={form.confirmPassword}
-                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full"
-                    onClick={() => setShowConfirm(!showConfirm)}
-                  >
-                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">{error}</p>}
-
-              <Button type="submit" className="w-full h-12 text-lg" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Creando cuenta...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="mr-2 h-5 w-5" />
-                    Crear cuenta
-                  </>
-                )}
-              </Button>
             </form>
           </CardContent>
-          <CardFooter className="flex justify-center">
-            <p className="text-sm text-muted-foreground">
-              ¿Ya tienes cuenta?{" "}
-              <Link href="/auth/iniciar-sesion" className="text-primary font-medium hover:underline">
-                Inicia sesión aquí
-              </Link>
-            </p>
-          </CardFooter>
         </Card>
       </div>
     </div>
