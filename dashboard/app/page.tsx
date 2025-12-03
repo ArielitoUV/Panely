@@ -79,7 +79,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 pt-4 w-full sm:w-auto">
             <Link href="/auth/registro">
               <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-orange-600 hover:bg-orange-700 shadow-xl hover:shadow-2xl hover:scale-105 transition-all text-white font-bold">
-                Comenzar Gratis <ArrowRight className="ml-2 h-5 w-5" />
+                Registrarse <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
             <Link href="/auth/iniciar-sesion">
