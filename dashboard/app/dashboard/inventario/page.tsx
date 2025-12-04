@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Search, Trash2 } from "lucide-react"
+import { Plus, Search, Trash2, Package, Edit, Save } from "lucide-react" // Edit icon added
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -11,15 +11,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 
-// AJUSTA ESTA URL SI TU BACKEND CORRE EN OTRO PUERTO
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function InventarioPage() {
   const { toast } = useToast()
+  
+  // Datos
   const [insumos, setInsumos] = useState<any[]>([])
+  const [tiposInsumo, setTiposInsumo] = useState<any[]>([]) 
+  const [tiposPresentacion, setTiposPresentacion] = useState<any[]>([]) // Nueva lista
+  
+  // Estados UI
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null) // ID para saber si editamos
 
   const [formData, setFormData] = useState({
     nombre: "",
@@ -29,38 +35,69 @@ export default function InventarioPage() {
     valorCompra: "",
   })
 
-  // Cargar desde BD
-  const fetchInsumos = async () => {
+  // Cargar datos iniciales
+  const fetchData = async () => {
     try {
         const token = localStorage.getItem("accessToken")
-        const res = await fetch(`${API_URL}/insumos`, {
-            headers: { Authorization: `Bearer ${token}` }
-        })
-        if (res.ok) {
-            const data = await res.json()
-            setInsumos(data)
-        }
+        const headers = { Authorization: `Bearer ${token}` }
+        
+        const [resInsumos, resTipos, resPresentaciones] = await Promise.all([
+            fetch(`${API_URL}/insumos`, { headers }),
+            fetch(`${API_URL}/insumos/tipos`, { headers }),
+            fetch(`${API_URL}/insumos/presentaciones`, { headers })
+        ])
+
+        if (resInsumos.ok) setInsumos(await resInsumos.json())
+        if (resTipos.ok) setTiposInsumo(await resTipos.json())
+        if (resPresentaciones.ok) setTiposPresentacion(await resPresentaciones.json())
+
     } catch (error) {
-        console.error("Error al cargar inventario", error)
+        console.error("Error cargando datos", error)
     }
   }
 
   useEffect(() => {
-    fetchInsumos()
+    fetchData()
   }, [])
+
+  // Preparar formulario para editar
+  const handleEdit = (insumo: any) => {
+      setEditingId(insumo.id)
+      setFormData({
+          nombre: insumo.nombre,
+          presentacion: insumo.presentacion,
+          cantidadCompra: insumo.cantidadCompra.toString(),
+          unidadMedida: insumo.unidadMedida,
+          valorCompra: insumo.valorCompra.toString()
+      })
+      setIsAddOpen(true)
+  }
+
+  // Resetear al cerrar o abrir nuevo
+  const handleOpenChange = (open: boolean) => {
+      setIsAddOpen(open)
+      if (!open) {
+          setEditingId(null)
+          setFormData({ nombre: "", presentacion: "", cantidadCompra: "", unidadMedida: "kg", valorCompra: "" })
+      }
+  }
 
   const handleSave = async () => {
     if (!formData.nombre || !formData.cantidadCompra || !formData.valorCompra) {
-        toast({ title: "Error", description: "Completa los campos requeridos", variant: "destructive" })
+        toast({ title: "Error", description: "Completa los campos obligatorios", variant: "destructive" })
         return
     }
 
     setIsLoading(true)
     try {
         const token = localStorage.getItem("accessToken")
-        // El backend hará la conversión matemática
-        const res = await fetch(`${API_URL}/insumos`, {
-            method: "POST",
+        
+        // Determinar URL y Método (POST o PUT)
+        const url = editingId ? `${API_URL}/insumos/${editingId}` : `${API_URL}/insumos`
+        const method = editingId ? "PUT" : "POST"
+
+        const res = await fetch(url, {
+            method: method,
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`
@@ -69,12 +106,11 @@ export default function InventarioPage() {
         })
 
         if (res.ok) {
-            toast({ title: "Éxito", description: "Insumo guardado correctamente" })
-            setFormData({ nombre: "", presentacion: "", cantidadCompra: "", unidadMedida: "kg", valorCompra: "" })
-            setIsAddOpen(false)
-            fetchInsumos()
+            toast({ title: "Éxito", description: editingId ? "Insumo actualizado" : "Insumo guardado" })
+            handleOpenChange(false) // Cierra y limpia
+            fetchData() // Recargar tabla
         } else {
-            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" })
+            toast({ title: "Error", description: "No se pudo guardar el insumo", variant: "destructive" })
         }
     } catch (error) {
         console.error(error)
@@ -84,15 +120,16 @@ export default function InventarioPage() {
   }
 
   const handleDelete = async (id: number) => {
-    if(!confirm("¿Eliminar este insumo?")) return;
+    if(!confirm("¿Estás seguro de borrar este insumo?")) return;
+
     try {
         const token = localStorage.getItem("accessToken")
         await fetch(`${API_URL}/insumos/${id}`, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${token}` }
         })
-        fetchInsumos()
-        toast({ title: "Eliminado", description: "Insumo borrado exitosamente" })
+        fetchData()
+        toast({ title: "Eliminado", description: "El insumo ha sido borrado" })
     } catch (error) {
         console.error(error)
     }
@@ -107,10 +144,10 @@ export default function InventarioPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Inventario de Insumos</h1>
-          <p className="text-muted-foreground">Gestiona tu materia prima (Todo estandarizado a gramos)</p>
+          <p className="text-muted-foreground">Gestiona tu materia prima estandarizada.</p>
         </div>
         
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <Dialog open={isAddOpen} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button className="bg-orange-600 hover:bg-orange-700">
               <Plus className="mr-2 h-4 w-4" /> Agregar Insumo
@@ -118,26 +155,51 @@ export default function InventarioPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Nuevo Insumo</DialogTitle>
+              <DialogTitle>{editingId ? "Modificar Insumo" : "Nuevo Ingreso de Stock"}</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              
+              {/* SELECTOR DE TIPO NORMALIZADO */}
               <div className="space-y-2">
-                <Label>Nombre</Label>
-                <Input 
-                  placeholder="Ej: Harina Selecta" 
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                />
+                <Label>Nombre del Insumo</Label>
+                <Select 
+                    value={formData.nombre} 
+                    onValueChange={(val) => setFormData({...formData, nombre: val})}
+                >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona el ingrediente..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tiposInsumo.map((tipo) => (
+                          <SelectItem key={tipo.id} value={tipo.nombre}>
+                              {tipo.nombre}
+                          </SelectItem>
+                      ))}
+                    </SelectContent>
+                </Select>
               </div>
+
+              {/* SELECTOR DE PRESENTACIÓN NORMALIZADA */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Presentación</Label>
-                  <Input 
-                    placeholder="Ej: Saco" 
-                    value={formData.presentacion}
-                    onChange={(e) => setFormData({...formData, presentacion: e.target.value})}
-                  />
+                  <Select 
+                      value={formData.presentacion} 
+                      onValueChange={(val) => setFormData({...formData, presentacion: val})}
+                  >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tipo de envase" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tiposPresentacion.map((tipo) => (
+                            <SelectItem key={tipo.id} value={tipo.nombre}>
+                                {tipo.nombre}
+                            </SelectItem>
+                        ))}
+                      </SelectContent>
+                  </Select>
                 </div>
+                
                 <div className="space-y-2">
                   <Label>Valor Compra ($)</Label>
                   <Input 
@@ -148,9 +210,10 @@ export default function InventarioPage() {
                   />
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Cantidad</Label>
+                  <Label>Cantidad Comprada</Label>
                   <Input 
                     type="number" 
                     placeholder="Ej: 25" 
@@ -175,20 +238,19 @@ export default function InventarioPage() {
                 </div>
               </div>
               
-              {/* Previsualización simple */}
               {formData.cantidadCompra && (
                 <div className="bg-muted p-3 rounded-md text-sm text-center">
-                   Se guardará como: <strong>
-                     {formData.unidadMedida === 'kg' 
+                   Se guardará como stock: <strong>
+                     {formData.unidadMedida === 'kg' || formData.unidadMedida === 'lt'
                         ? (parseFloat(formData.cantidadCompra) * 1000).toLocaleString() 
-                        : parseFloat(formData.cantidadCompra).toLocaleString()} gramos
+                        : parseFloat(formData.cantidadCompra).toLocaleString()} {formData.unidadMedida === 'lt' ? 'ml' : 'gramos'}
                    </strong>
                 </div>
               )}
             </div>
             <DialogFooter>
               <Button onClick={handleSave} disabled={isLoading} className="bg-orange-600">
-                {isLoading ? "Guardando..." : "Guardar en Inventario"}
+                {editingId ? <><Save className="mr-2 h-4 w-4"/> Actualizar</> : "Guardar en Inventario"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -210,25 +272,30 @@ export default function InventarioPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nombre</TableHead>
+                <TableHead>Ingrediente</TableHead>
                 <TableHead>Presentación</TableHead>
-                <TableHead className="text-right">Stock (Gramos)</TableHead>
-                <TableHead className="text-right">Costo x Gramo</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
+                <TableHead className="text-right">Stock Real</TableHead>
+                <TableHead className="text-right">Costo Base</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredInsumos.map((insumo) => (
                 <TableRow key={insumo.id}>
-                  <TableCell className="font-medium">{insumo.nombre}</TableCell>
-                  <TableCell>{insumo.presentacion} ({insumo.cantidadCompra} {insumo.unidadMedida})</TableCell>
+                  <TableCell className="font-bold text-base">{insumo.nombre}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {insumo.presentacion} ({insumo.cantidadCompra} {insumo.unidadMedida})
+                  </TableCell>
                   <TableCell className="text-right font-mono text-blue-600">
-                    {insumo.stockGramos.toLocaleString()} gr
+                    {insumo.stockGramos.toLocaleString()} {insumo.unidadMedida === 'lt' ? 'ml' : 'gr'}
                   </TableCell>
                   <TableCell className="text-right text-xs text-muted-foreground">
-                    ${insumo.costoPorGramo.toFixed(2)}
+                    ${insumo.costoPorGramo.toFixed(2)} / {insumo.unidadMedida === 'lt' ? 'ml' : 'gr'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right flex justify-end gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}>
+                      <Edit className="h-4 w-4 text-blue-500" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}>
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
@@ -238,7 +305,7 @@ export default function InventarioPage() {
               {filteredInsumos.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    No hay insumos registrados.
+                    No hay insumos registrados. Agrega uno arriba.
                   </TableCell>
                 </TableRow>
               )}

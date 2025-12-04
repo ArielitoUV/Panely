@@ -1,7 +1,54 @@
 import { Request, Response } from 'express';
 import { prisma } from './database';
 
-// OBTENER
+// --- OBTENER TIPOS DE INSUMO (CATÁLOGO) ---
+export const getTiposInsumo = async (req: Request, res: Response) => {
+    try {
+        let tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
+        if (tipos.length === 0) {
+            await prisma.tipoInsumo.createMany({
+                data: [
+                    { nombre: "Azúcar" },
+                    { nombre: "Harina" },
+                    { nombre: "Levadura" },
+                    { nombre: "Maicena" },
+                    { nombre: "Manteca" },
+                    { nombre: "Mejorador" }, 
+                    { nombre: "Sal" },
+                ]
+            });
+            tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
+        }
+        res.json(tipos);
+    } catch (error) {
+        res.status(500).json({ error: "Error al cargar tipos" });
+    }
+};
+
+// --- NUEVO: OBTENER PRESENTACIONES (CATÁLOGO) ---
+export const getTiposPresentacion = async (req: Request, res: Response) => {
+    try {
+        let tipos = await prisma.tipoPresentacion.findMany({ orderBy: { nombre: 'asc' } });
+        
+        // Sembrar datos si está vacío
+        if (tipos.length === 0) {
+            await prisma.tipoPresentacion.createMany({
+                data: [
+                    { nombre: "Bolsa Individual" },
+                    { nombre: "Caja" },
+                    { nombre: "Saco" },
+                    { nombre: "Tarro" },
+                    { nombre: "Paquete" }
+                ]
+            });
+            tipos = await prisma.tipoPresentacion.findMany({ orderBy: { nombre: 'asc' } });
+        }
+        res.json(tipos);
+    } catch (error) {
+        res.status(500).json({ error: "Error al cargar presentaciones" });
+    }
+};
+
 export const getInsumos = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -18,7 +65,6 @@ export const getInsumos = async (req: Request, res: Response) => {
   }
 };
 
-// CREAR (Con lógica de gramos)
 export const createInsumo = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -28,9 +74,8 @@ export const createInsumo = async (req: Request, res: Response) => {
     const cantidad = parseFloat(cantidadCompra);
     const valor = parseInt(valorCompra);
     
-    // Conversión
     let stockGramos = 0;
-    if (unidadMedida === 'kg') {
+    if (unidadMedida === 'kg' || unidadMedida === 'lt') {
       stockGramos = cantidad * 1000;
     } else {
       stockGramos = cantidad;
@@ -40,7 +85,7 @@ export const createInsumo = async (req: Request, res: Response) => {
 
     const insumo = await prisma.insumo.create({
       data: {
-        nombre,
+        nombre, 
         presentacion,
         cantidadCompra: cantidad,
         unidadMedida,
@@ -50,14 +95,48 @@ export const createInsumo = async (req: Request, res: Response) => {
         userId
       }
     });
-
     res.json(insumo);
   } catch (error) {
     res.status(500).json({ error: 'Error al crear insumo' });
   }
 };
 
-// ELIMINAR
+// --- NUEVO: ACTUALIZAR INSUMO ---
+export const updateInsumo = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { nombre, presentacion, cantidadCompra, unidadMedida, valorCompra } = req.body;
+
+        const cantidad = parseFloat(cantidadCompra);
+        const valor = parseInt(valorCompra);
+        
+        // Recalcular stock y costos
+        let stockGramos = 0;
+        if (unidadMedida === 'kg' || unidadMedida === 'lt') {
+            stockGramos = cantidad * 1000;
+        } else {
+            stockGramos = cantidad;
+        }
+        const costoPorGramo = stockGramos > 0 ? (valor / stockGramos) : 0;
+
+        const actualizado = await prisma.insumo.update({
+            where: { id: Number(id) },
+            data: {
+                nombre,
+                presentacion,
+                cantidadCompra: cantidad,
+                unidadMedida,
+                valorCompra: valor,
+                stockGramos,
+                costoPorGramo
+            }
+        });
+        res.json(actualizado);
+    } catch (error) {
+        res.status(500).json({ error: "Error al actualizar" });
+    }
+}
+
 export const deleteInsumo = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

@@ -137,3 +137,15 @@ model Ingreso {
 
   @@index([userId])
 }
+
+// NUEVO MODELO: Catálogo de tipos de insumos
+model TipoInsumo {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @unique // Ej: "Harina", "Sal"
+}
+
+// NUEVO MODELO: Catálogo de presentaciones
+model TipoPresentacion {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @unique // Ej: "Saco", "Caja"
+}
