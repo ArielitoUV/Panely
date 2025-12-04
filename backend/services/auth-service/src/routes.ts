@@ -2,48 +2,31 @@ import { Router } from 'express';
 import { register, login, me } from './authController';
 import { authenticateToken } from './authService';
 
-import { 
-  getInsumos, 
-  createInsumo, 
-  deleteInsumo 
-} from './insumoController';
-
-import { 
-  getRecetas, 
-  createReceta, 
-  deleteReceta,
-  createPedido 
-} from './recetaController';
-
-import { 
-  getCajaDiaria, 
-  abrirCaja, 
-  cerrarCaja, 
-  registrarMovimiento, 
-  getHistorialCajas 
-} from './cajaController';
+import { getInsumos, createInsumo, deleteInsumo } from './insumoController';
+// Importamos updateReceta
+import { getRecetas, createReceta, deleteReceta, updateReceta, createPedido } from './recetaController';
+import { getCajaDiaria, abrirCaja, cerrarCaja, registrarMovimiento, getHistorialCajas } from './cajaController';
 
 const router = Router();
 
-// --- Auth ---
+// ... (Auth e Insumos igual que antes) ...
 router.post('/auth/register', register);
 router.post('/auth/login', login);
 router.get('/auth/me', authenticateToken, me);
 
-// --- Insumos ---
 router.get('/insumos', authenticateToken, getInsumos);
 router.post('/insumos', authenticateToken, createInsumo);
 router.delete('/insumos/:id', authenticateToken, deleteInsumo);
 
-// --- Recetas ---
+// --- RECETAS ACTUALIZADAS ---
 router.get('/recetas', authenticateToken, getRecetas);
 router.post('/recetas', authenticateToken, createReceta);
+router.put('/recetas/:id', authenticateToken, updateReceta); // <--- NUEVA
 router.delete('/recetas/:id', authenticateToken, deleteReceta);
 
-// --- Pedidos ---
 router.post('/pedidos', authenticateToken, createPedido);
 
-// --- Caja ---
+// ... (Caja igual que antes) ...
 router.get('/caja/hoy', authenticateToken, getCajaDiaria);
 router.post('/caja/abrir', authenticateToken, abrirCaja);
 router.post('/caja/cerrar', authenticateToken, cerrarCaja);
