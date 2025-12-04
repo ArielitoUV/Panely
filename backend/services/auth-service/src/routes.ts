@@ -2,35 +2,39 @@ import { Router } from 'express';
 import { register, login, me } from './authController';
 import { authenticateToken } from './authService';
 
+// Importamos todos los controladores necesarios
 import { getInsumos, createInsumo, deleteInsumo } from './insumoController';
-// Importamos updateReceta
-import { getRecetas, createReceta, deleteReceta, updateReceta, createPedido } from './recetaController';
-import { getCajaDiaria, abrirCaja, cerrarCaja, registrarMovimiento, getHistorialCajas } from './cajaController';
+import { getRecetas, createReceta, deleteReceta, createPedido } from './recetaController';
+import { getCajaDiaria, abrirCaja, cerrarCaja, getHistorialCajas } from './cajaController';
+import { registrarIngreso, getMovimientosHoy } from './finanzasController'; // <--- IMPORTAR ESTO
 
 const router = Router();
 
-// ... (Auth e Insumos igual que antes) ...
+// --- AUTH ---
 router.post('/auth/register', register);
 router.post('/auth/login', login);
 router.get('/auth/me', authenticateToken, me);
 
+// --- INSUMOS ---
 router.get('/insumos', authenticateToken, getInsumos);
 router.post('/insumos', authenticateToken, createInsumo);
 router.delete('/insumos/:id', authenticateToken, deleteInsumo);
 
-// --- RECETAS ACTUALIZADAS ---
+// --- RECETAS ---
 router.get('/recetas', authenticateToken, getRecetas);
 router.post('/recetas', authenticateToken, createReceta);
-router.put('/recetas/:id', authenticateToken, updateReceta); // <--- NUEVA
 router.delete('/recetas/:id', authenticateToken, deleteReceta);
-
 router.post('/pedidos', authenticateToken, createPedido);
 
-// ... (Caja igual que antes) ...
+// --- CAJA (Gestión) ---
 router.get('/caja/hoy', authenticateToken, getCajaDiaria);
 router.post('/caja/abrir', authenticateToken, abrirCaja);
 router.post('/caja/cerrar', authenticateToken, cerrarCaja);
-router.post('/caja/movimiento', authenticateToken, registrarMovimiento);
 router.get('/caja/historial', authenticateToken, getHistorialCajas);
+
+// --- FINANZAS (Movimientos Diarios) ---
+// Estas son las rutas que usará tu página de Ingresos
+router.post('/finanzas/ingreso', authenticateToken, registrarIngreso);
+router.get('/finanzas/movimientos/hoy', authenticateToken, getMovimientosHoy);
 
 export default router;

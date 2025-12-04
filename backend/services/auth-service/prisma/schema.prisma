@@ -23,6 +23,7 @@ model User {
   cajaDiaria    CajaDiaria[]
   recetas       Receta[]
   pedidos       Pedido[]
+  ingreso       Ingreso[]
 }
 
 model RefreshToken {
@@ -122,4 +123,17 @@ model CajaDiaria {
 
   @@index([userId])
   @@index([fecha])
+}
+
+model Ingreso {
+  id          Int      @id @default(autoincrement())
+  monto       Int
+  descripcion String
+  metodoPago  String   // EFECTIVO, TARJETA, TRANSFERENCIA
+  fecha       DateTime @default(now())
+  
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
