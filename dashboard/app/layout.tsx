@@ -11,7 +11,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Panely",
   description: "panaderia",
     generator: 'v0.app'
 }
