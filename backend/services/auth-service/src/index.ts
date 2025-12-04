@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3001;
 
 // 1. Configuración de CORS (Permitir que el puerto 3000 hable con el 3001)
 app.use(cors({
-  origin: 'http://localhost:3000', // Tu frontend
+  origin: true, // Esto acepta cualquier origen automáticamente
   credentials: true
 }));
 
@@ -43,7 +43,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Error interno del servidor', details: err.message });
 });
 
-// 5. Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`✅ Servidor Backend corriendo en: http://localhost:${PORT}`);
+// En backend/services/auth-service/src/index.ts
+app.listen(Number(PORT), '0.0.0.0', () => { // <--- Agrega '0.0.0.0'
+  console.log(`✅ Servidor corriendo en puerto ${PORT}`);
 });
