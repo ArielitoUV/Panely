@@ -1,58 +1,88 @@
 "use client"
 
-import { Bell, Search, Menu, Moon, Sun } from "lucide-react"
+import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
+import { Menu, Moon, Sun } from "lucide-react" 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { useTheme } from "next-themes"
+import { Separator } from "@/components/ui/separator"
+import { useTheme } from "next-themes" // Importamos el hook de tema
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+
+const pathNames: Record<string, string> = {
+  dashboard: "Inicio",
+  calculoInsumo: "Cálculo de Insumos",
+  ingresos: "Ingresos",
+  egresos: "Egresos",
+  inventario: "Inventario",
+  reportes: "Reportes",
+  configuracion: "Configuración",
+}
 
 interface DashboardNavbarProps {
-  onMenuClick: () => void
+  onMenuClick?: () => void;
 }
 
 export function DashboardNavbar({ onMenuClick }: DashboardNavbarProps) {
-  const { theme, setTheme } = useTheme()
+  const pathname = usePathname()
+  const { setTheme, theme } = useTheme() // Hook para manejar el tema
+  const [mounted, setMounted] = useState(false)
+
+  // Evitar hidratación incorrecta
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const segments = pathname.split("/").filter(Boolean)
+  const currentPage = segments[segments.length - 1]
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 sm:gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 sm:px-6 lg:px-8 shrink-0">
-      <Button variant="ghost" size="icon" className="lg:hidden h-10 w-10 shrink-0" onClick={onMenuClick}>
-        <Menu className="h-5 w-5" />
-        <span className="sr-only">Toggle menu</span>
-      </Button>
-
-      {/* <div className="flex-1 max-w-md lg:max-w-xl">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            type="search"
-            placeholder="Search..."
-            className="pl-10 pr-4 h-10 w-full bg-muted/50 border-0 focus-visible:bg-background text-sm"
-          />
-        </div>
-      </div> */}
-
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-10 w-10"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Toggle theme</span>
+    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 sticky top-0 bg-background/95 backdrop-blur z-10 justify-between">
+      
+      <div className="flex items-center gap-2">
+        {/* BOTÓN MENÚ MÓVIL (IZQUIERDA) */}
+        <Button variant="ghost" size="icon" className="lg:hidden h-10 w-10 shrink-0 mr-2" onClick={onMenuClick}>
+            <Menu className="h-5 w-5" />
+            <span className="sr-only">Toggle menu</span>
         </Button>
 
-        {/* <Button variant="ghost" size="icon" className="relative h-10 w-10">
-          <Bell className="h-5 w-5" />
-          <Badge
-            variant="destructive"
-            className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] font-bold"
-          >
-            3
-          </Badge>
-          <span className="sr-only">Notifications</span>
-        </Button> */}
+        <Separator orientation="vertical" className="mr-2 h-4 hidden lg:block" />
+        
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink href="/dashboard">Panely</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{pathNames[currentPage] || "Panel"}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
+      {/* BOTÓN CAMBIO DE TEMA (DERECHA) */}
+      <div className="flex items-center gap-2">
+         {mounted && (
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
+              {theme === "dark" ? (
+                  <Sun className="h-5 w-5 transition-all" />
+              ) : (
+                  <Moon className="h-5 w-5 transition-all" />
+              )}
+              <span className="sr-only">Cambiar tema</span>
+            </Button>
+         )}
       </div>
     </header>
   )

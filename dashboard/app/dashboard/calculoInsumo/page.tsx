@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Calculator, Save, ChefHat, Plus, Trash2, Eye, Edit, ArrowRight, X, Flame, TrendingUp } from "lucide-react"
+// Agregamos ClipboardList para el icono del historial
+import { Calculator, Save, ChefHat, Plus, Trash2, Eye, Edit, ArrowRight, X, Flame, TrendingUp, Loader2, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,12 +14,13 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription, 
-  DialogTrigger, 
-  DialogFooter 
+  DialogFooter,
+  DialogTrigger 
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -41,8 +43,16 @@ interface Receta {
   }[]
 }
 
-// Generador de porcentajes (5% al 100%)
-const porcentajes = Array.from({ length: 20 }, (_, i) => (i + 1) * 5);
+interface Pedido {
+  id: number
+  fecha: string
+  nombreCliente: string
+  cantidadPanes: number
+  montoTotal: number
+  receta: { nombre: string }
+}
+
+const porcentajes = Array.from({ length: 12 }, (_, i) => (i + 1) * 5);
 
 export default function CalculoInsumosPage() {
   const { toast } = useToast()
@@ -50,13 +60,17 @@ export default function CalculoInsumosPage() {
   // --- ESTADOS DE DATOS ---
   const [insumosDisponibles, setInsumosDisponibles] = useState<Insumo[]>([])
   const [recetas, setRecetas] = useState<Receta[]>([])
+  const [pedidos, setPedidos] = useState<Pedido[]>([]) // Estado para el historial
   
   // --- ESTADOS MODALES ---
   const [isNuevaRecetaOpen, setIsNuevaRecetaOpen] = useState(false)
   const [isListaRecetasOpen, setIsListaRecetasOpen] = useState(false)
+  const [isListaPedidosOpen, setIsListaPedidosOpen] = useState(false) // Modal de pedidos
+
+  const [isProcessing, setIsProcessing] = useState(false) 
 
   // --- ESTADOS FORMULARIO RECETA ---
-  const [editingId, setEditingId] = useState<number | null>(null) // ID si estamos editando
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [newReceta, setNewReceta] = useState<{nombre: string, cantidadBase: string, ingredientes: any[]}>({
     nombre: "", cantidadBase: "", ingredientes: []
   })
@@ -68,9 +82,8 @@ export default function CalculoInsumosPage() {
   const [cantidadSolicitada, setCantidadSolicitada] = useState("")
   const [recetaSeleccionadaId, setRecetaSeleccionadaId] = useState("")
   
-  // Nuevos campos de costos
-  const [porcentajeGastos, setPorcentajeGastos] = useState("10") // Default 10% (Gas/Luz)
-  const [margenGanancia, setMargenGanancia] = useState("60")   // Default 60%
+  const [porcentajeGastos, setPorcentajeGastos] = useState("10")
+  const [margenGanancia, setMargenGanancia] = useState("30")
 
   const [resultado, setResultado] = useState<{
       ingredientes: any[], 
@@ -86,13 +99,15 @@ export default function CalculoInsumosPage() {
         const token = localStorage.getItem("accessToken")
         const headers = { Authorization: `Bearer ${token}` }
         
-        const [resInsumos, resRecetas] = await Promise.all([
+        const [resInsumos, resRecetas, resPedidos] = await Promise.all([
             fetch(`${API_URL}/insumos`, { headers }),
-            fetch(`${API_URL}/recetas`, { headers })
+            fetch(`${API_URL}/recetas`, { headers }),
+            fetch(`${API_URL}/pedidos`, { headers }) // Cargamos pedidos
         ])
 
         if(resInsumos.ok) setInsumosDisponibles(await resInsumos.json())
         if(resRecetas.ok) setRecetas(await resRecetas.json())
+        if(resPedidos.ok) setPedidos(await resPedidos.json())
 
     } catch (e) {
         console.error("Error cargando datos", e)
@@ -123,7 +138,6 @@ export default function CalculoInsumosPage() {
     setSelectedInsumoGramos("")
   }
 
-  // Cargar datos en el modal para editar
   const handleEditarReceta = (receta: Receta) => {
       setEditingId(receta.id)
       setNewReceta({
@@ -135,21 +149,19 @@ export default function CalculoInsumosPage() {
               cantidadGramos: ing.cantidadGramos
           }))
       })
-      setIsListaRecetasOpen(false) // Cierra lista
-      setIsNuevaRecetaOpen(true)   // Abre editor
+      setIsListaRecetasOpen(false)
+      setIsNuevaRecetaOpen(true)   
   }
 
-  // Guardar (POST o PUT)
   const guardarRecetaBD = async () => {
     if (!newReceta.nombre || !newReceta.cantidadBase || newReceta.ingredientes.length === 0) {
       toast({ title: "Error", description: "Faltan datos en la receta", variant: "destructive" })
       return
     }
 
+    setIsProcessing(true)
     try {
         const token = localStorage.getItem("accessToken")
-        
-        // Si hay editingId hacemos PUT, sino POST
         const url = editingId ? `${API_URL}/recetas/${editingId}` : `${API_URL}/recetas`
         const method = editingId ? "PUT" : "POST"
 
@@ -163,16 +175,19 @@ export default function CalculoInsumosPage() {
             toast({ title: "Éxito", description: editingId ? "Receta actualizada" : "Receta creada" })
             setIsNuevaRecetaOpen(false)
             setNewReceta({ nombre: "", cantidadBase: "", ingredientes: [] })
-            setEditingId(null) // Limpiar modo edición
+            setEditingId(null)
             fetchData() 
         }
     } catch (e) {
         toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" })
+    } finally {
+        setIsProcessing(false)
     }
   }
 
   const eliminarReceta = async (id: number) => {
       if(!confirm("¿Borrar esta receta permanentemente?")) return;
+      setIsProcessing(true)
       const token = localStorage.getItem("accessToken")
       try {
         await fetch(`${API_URL}/recetas/${id}`, { 
@@ -185,6 +200,7 @@ export default function CalculoInsumosPage() {
             setResultado(null)
         }
       } catch (e) { console.error(e) }
+      finally { setIsProcessing(false) }
   }
 
   // --- CALCULADORA MATEMÁTICA ---
@@ -201,7 +217,6 @@ export default function CalculoInsumosPage() {
     const cantidad = parseInt(cantidadSolicitada)
     if (isNaN(cantidad) || cantidad <= 0) return
 
-    // 1. Calcular Insumos Base
     const factor = cantidad / receta.cantidadBase 
     let costoMateriaPrima = 0
     
@@ -215,19 +230,17 @@ export default function CalculoInsumosPage() {
       costoMateriaPrima += costoIngrediente
 
       return {
+        insumoId: insumoData.id,
         nombre: insumoData.nombre,
         cantidad: cantidadNecesaria,
         costo: costoIngrediente
       }
     }).filter(Boolean)
 
-    // 2. Agregar Gastos Operativos (Agua, Luz, Gas)
     const pctGastos = parseInt(porcentajeGastos) || 0
     const costoOperativo = costoMateriaPrima * (pctGastos / 100)
-    
     const costoTotalProduccion = costoMateriaPrima + costoOperativo
 
-    // 3. Agregar Margen de Ganancia
     const pctMargen = parseInt(margenGanancia) || 0
     const precioVentaSugerido = costoTotalProduccion * (1 + (pctMargen / 100))
 
@@ -248,6 +261,7 @@ export default function CalculoInsumosPage() {
           return
       }
 
+      setIsProcessing(true)
       try {
         const token = localStorage.getItem("accessToken")
         const payload = {
@@ -273,9 +287,12 @@ export default function CalculoInsumosPage() {
             setNombreCliente("")
             setCantidadSolicitada("")
             setResultado(null)
+            fetchData() // Recargar historial
         }
       } catch(e) {
           toast({ title: "Error", description: "Fallo al guardar pedido", variant: "destructive" })
+      } finally {
+          setIsProcessing(false)
       }
   }
 
@@ -292,8 +309,57 @@ export default function CalculoInsumosPage() {
           <p className="text-muted-foreground">Planifica producción, costos fijos y márgenes de ganancia.</p>
         </div>
 
-        <div className="flex gap-2">
-            {/* BOTÓN VER LISTA */}
+        <div className="flex gap-2 flex-wrap">
+            
+            {/* BOTÓN VER PEDIDOS (NUEVO) */}
+            <Dialog open={isListaPedidosOpen} onOpenChange={setIsListaPedidosOpen}>
+                <DialogTrigger asChild>
+                    <Button variant="secondary" className="gap-2 border hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <ClipboardList className="h-4 w-4" /> Historial Pedidos
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Historial de Producción</DialogTitle>
+                        <DialogDescription>Registro de todos los pedidos calculados y guardados.</DialogDescription>
+                    </DialogHeader>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Producto</TableHead>
+                                <TableHead className="text-center">Cantidad</TableHead>
+                                <TableHead className="text-right">Total Cobrado</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {pedidos.length === 0 && (
+                                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No hay pedidos registrados.</TableCell></TableRow>
+                            )}
+                            {pedidos.map((p) => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">
+                                        {new Date(p.fecha).toLocaleDateString()}
+                                    </TableCell>
+                                    <TableCell className="font-medium">{p.nombreCliente}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className="font-normal">
+                                            {p.receta?.nombre || "Receta eliminada"}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-center">{p.cantidadPanes}</TableCell>
+                                    <TableCell className="text-right font-bold text-green-600">
+                                        ${p.montoTotal.toLocaleString()}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </DialogContent>
+            </Dialog>
+
+            {/* BOTÓN VER RECETAS */}
             <Dialog open={isListaRecetasOpen} onOpenChange={setIsListaRecetasOpen}>
                 <DialogTrigger asChild>
                     <Button variant="outline" className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50">
@@ -303,7 +369,6 @@ export default function CalculoInsumosPage() {
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Gestión de Recetas</DialogTitle>
-                        <DialogDescription>Lista de todas tus recetas maestras.</DialogDescription>
                     </DialogHeader>
                     <Table>
                         <TableHeader>
@@ -318,13 +383,12 @@ export default function CalculoInsumosPage() {
                             {recetas.map((r) => (
                                 <TableRow key={r.id}>
                                     <TableCell className="font-medium">{r.nombre}</TableCell>
-                                    <TableCell>{r.cantidadBase} und.</TableCell>
+                                    <TableCell>{r.cantidadBase} un.</TableCell>
                                     <TableCell className="text-xs text-muted-foreground">
                                         {r.ingredientes?.map((i: any) => i.insumo?.nombre).join(", ")}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
-                                            {/* BOTÓN EDITAR */}
                                             <Button size="sm" variant="ghost" onClick={() => handleEditarReceta(r)}>
                                                 <Edit className="h-4 w-4 text-blue-500" />
                                             </Button>
@@ -358,11 +422,10 @@ export default function CalculoInsumosPage() {
                         <DialogTitle>{editingId ? "Editar Receta" : "Crear Receta Maestra"}</DialogTitle>
                     </DialogHeader>
                     
-                    {/* FORMULARIO DE RECETA */}
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nombre</Label>
+                                <Label>Nombre del Pan</Label>
                                 <Input placeholder="Ej: Marraqueta" value={newReceta.nombre} onChange={(e) => setNewReceta({...newReceta, nombre: e.target.value})} />
                             </div>
                             <div className="space-y-2">
@@ -370,6 +433,7 @@ export default function CalculoInsumosPage() {
                                 <Input type="number" placeholder="Ej: 10" value={newReceta.cantidadBase} onChange={(e) => setNewReceta({...newReceta, cantidadBase: e.target.value})} />
                             </div>
                         </div>
+
                         <div className="border rounded-lg p-4 bg-muted/30">
                             <h4 className="text-sm font-medium mb-3">Ingredientes</h4>
                             <div className="flex gap-2 items-end mb-4">
@@ -405,7 +469,10 @@ export default function CalculoInsumosPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button onClick={guardarRecetaBD} className="bg-orange-600">{editingId ? "Actualizar" : "Guardar"}</Button>
+                        <Button onClick={guardarRecetaBD} disabled={isProcessing} className="bg-orange-600">
+                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                             {editingId ? "Actualizar" : "Guardar"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -413,96 +480,79 @@ export default function CalculoInsumosPage() {
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">
-        
-        {/* --- COLUMNA IZQUIERDA: CONFIGURACIÓN --- */}
+        {/* CONFIGURACION */}
         <Card className="shadow-md border-l-4 border-l-orange-500 h-fit">
           <CardHeader>
              <CardTitle>Configurar Producción</CardTitle>
              <CardDescription>Define qué producir y los parámetros de costo.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* 1. RECETA Y CANTIDAD */}
              <div className="grid grid-cols-1 gap-4 p-4 bg-orange-50 dark:bg-orange-950/10 rounded-lg">
                  <div className="space-y-2">
-                    <Label>Receta a Utilizar</Label>
+                    <Label>Receta</Label>
                     <Select value={recetaSeleccionadaId} onValueChange={setRecetaSeleccionadaId}>
                         <SelectTrigger className="bg-background"><SelectValue placeholder="Seleccionar Pan..." /></SelectTrigger>
                         <SelectContent>
                             {recetas.map(r => (
-                                <SelectItem key={r.id} value={r.id.toString()}>🍞 {r.nombre} (Base: {r.cantidadBase})</SelectItem>
+                                <SelectItem key={r.id} value={r.id.toString()}>🍞 {r.nombre}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
                  </div>
                  <div className="space-y-2">
-                    <Label>Cantidad a Producir (Unidades)</Label>
+                    <Label>Cantidad (Unidades)</Label>
                     <Input type="number" placeholder="Ej: 100" className="bg-background font-bold text-lg" value={cantidadSolicitada} onChange={(e) => setCantidadSolicitada(e.target.value)} />
                  </div>
              </div>
 
              <Separator />
 
-             {/* 2. PARÁMETROS DE COSTOS (NUEVO) */}
              <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1 text-xs uppercase font-bold text-muted-foreground">
-                        <Flame className="h-3 w-3" /> Gastos (Gas/Luz)
-                    </Label>
+                    <Label className="flex items-center gap-1 text-xs uppercase font-bold text-muted-foreground"><Flame className="h-3 w-3" /> Gastos</Label>
                     <Select value={porcentajeGastos} onValueChange={setPorcentajeGastos}>
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="0">0% (Solo materia prima)</SelectItem>
-                            {porcentajes.map(p => (
-                                <SelectItem key={p} value={p.toString()}>{p}% adicional</SelectItem>
-                            ))}
+                            <SelectItem value="0">0%</SelectItem>
+                            {porcentajes.map(p => <SelectItem key={p} value={p.toString()}>{p}%</SelectItem>)}
                         </SelectContent>
                     </Select>
                  </div>
 
                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1 text-xs uppercase font-bold text-muted-foreground">
-                        <TrendingUp className="h-3 w-3" /> Margen Ganancia
-                    </Label>
+                    <Label className="flex items-center gap-1 text-xs uppercase font-bold text-muted-foreground"><TrendingUp className="h-3 w-3" /> Margen</Label>
                     <Select value={margenGanancia} onValueChange={setMargenGanancia}>
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            {porcentajes.map(p => (
-                                <SelectItem key={p} value={p.toString()}>{p}% utilidad</SelectItem>
-                            ))}
+                            {porcentajes.map(p => <SelectItem key={p} value={p.toString()}>{p}%</SelectItem>)}
                         </SelectContent>
                     </Select>
                  </div>
              </div>
 
              <div className="space-y-2 pt-4">
-                <Label>Cliente (Opcional)</Label>
+                <Label>Cliente</Label>
                 <Input placeholder="Nombre del cliente" value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} />
              </div>
           </CardContent>
         </Card>
 
-        {/* --- COLUMNA DERECHA: HOJA DE COSTOS --- */}
+        {/* RESULTADOS */}
         <div className="space-y-4">
             {resultado ? (
-            <Card className="border-2 border-blue-500/20 shadow-xl animate-in fade-in slide-in-from-right-4 bg-white dark:bg-card">
+            <Card className="border-2 border-blue-500/20 shadow-xl bg-white dark:bg-card">
                 <CardHeader className="bg-blue-50/50 dark:bg-blue-950/20 pb-4 border-b">
                     <div className="flex justify-between items-center">
-                        <CardTitle className="text-xl text-blue-700 dark:text-blue-400">Estructura de Costos</CardTitle>
+                        <CardTitle className="text-xl text-blue-700 dark:text-blue-400">Costos</CardTitle>
                         <div className="text-right">
-                            <p className="text-xs uppercase font-bold text-muted-foreground">Costo Total</p>
+                            <p className="text-xs uppercase font-bold text-muted-foreground">Total</p>
                             <p className="text-xl font-bold text-slate-700 dark:text-slate-200">${Math.round(resultado.costoTotal).toLocaleString()}</p>
                         </div>
                     </div>
                 </CardHeader>
                 
                 <CardContent className="p-0">
-                    {/* DETALLE MATERIA PRIMA */}
                     <div className="p-4 bg-muted/20">
-                        <h4 className="text-xs font-bold uppercase mb-2 text-muted-foreground">Materia Prima</h4>
                         <div className="space-y-1">
                             {resultado.ingredientes.map((ing: any, idx: number) => (
                                 <div key={idx} className="flex justify-between text-sm">
@@ -511,35 +561,28 @@ export default function CalculoInsumosPage() {
                                 </div>
                             ))}
                             <div className="border-t mt-2 pt-1 flex justify-between font-semibold text-sm">
-                                <span>Subtotal Insumos</span>
+                                <span>Materia Prima</span>
                                 <span>${Math.round(resultado.costoMateriaPrima).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* DETALLE GASTOS */}
-                    <div className="p-4 bg-orange-50/50 dark:bg-orange-950/10 border-t border-dashed">
-                        <div className="flex justify-between text-sm text-orange-800 dark:text-orange-200">
-                            <span>+ Gastos Operativos ({porcentajeGastos}%)</span>
-                            <span className="font-mono">${Math.round(resultado.costoOperativo).toLocaleString()}</span>
-                        </div>
+                    <div className="p-4 bg-orange-50/50 dark:bg-orange-950/10 border-t border-dashed flex justify-between text-sm text-orange-800 dark:text-orange-200">
+                        <span>+ Gastos ({porcentajeGastos}%)</span>
+                        <span className="font-mono">${Math.round(resultado.costoOperativo).toLocaleString()}</span>
                     </div>
                     
-                    {/* PRECIO FINAL */}
                     <div className="bg-slate-900 text-white p-6 rounded-b-lg">
                         <div className="flex justify-between items-end mb-1">
-                            <span className="text-slate-400 text-sm">Margen de Ganancia ({margenGanancia}%)</span>
+                            <span className="text-slate-400 text-sm">Margen ({margenGanancia}%)</span>
                             <span className="text-green-400 font-mono">+${Math.round(resultado.sugerido - resultado.costoTotal).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between items-center border-t border-slate-700 pt-3 mt-2">
-                            <span className="font-bold text-lg">Precio Venta:</span>
-                            <span className="font-black text-3xl tracking-tight text-green-400">
-                                ${Math.round(resultado.sugerido).toLocaleString()}
-                            </span>
+                            <span className="font-bold text-lg">Venta Sugerida:</span>
+                            <span className="font-black text-3xl tracking-tight text-green-400">${Math.round(resultado.sugerido).toLocaleString()}</span>
                         </div>
-                        
-                        <Button onClick={guardarPedidoBD} className="w-full bg-green-600 hover:bg-green-500 text-white mt-4 h-12 font-bold">
-                            <Save className="mr-2 h-5 w-5" /> Guardar Pedido
+                        <Button onClick={guardarPedidoBD} disabled={isProcessing} className="w-full bg-green-600 hover:bg-green-500 text-white mt-4 h-12 font-bold">
+                            {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <Save className="mr-2 h-5 w-5" />} Guardar Pedido
                         </Button>
                     </div>
                 </CardContent>
@@ -548,9 +591,7 @@ export default function CalculoInsumosPage() {
                 <div className="h-full min-h-[400px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-muted/10 text-muted-foreground p-8 text-center">
                     <ArrowRight className="h-12 w-12 mb-4 opacity-20" />
                     <h3 className="text-lg font-medium mb-2">Calculadora de Costos</h3>
-                    <p className="max-w-xs text-sm">
-                        Configura la receta, cantidad y porcentajes a la izquierda para ver el desglose financiero completo.
-                    </p>
+                    <p className="max-w-xs text-sm">Configura la producción para ver el desglose.</p>
                 </div>
             )}
         </div>

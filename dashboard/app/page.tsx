@@ -42,14 +42,6 @@ export default function Home() {
                 Iniciar Sesión
               </Button>
             </Link>
-
-            {/* Botón Dashboard (Visible siempre o condicionalmente si quisieras) */}
-            <Link href="/dashboard">
-               <Button size="default" variant="secondary" className="gap-2 shadow-lg bg-white/90 text-black hover:bg-white hidden sm:flex">
-                 <LayoutDashboard className="h-4 w-4" />
-                 Dashboard
-               </Button>
-            </Link>
           </nav>
 
         </div>

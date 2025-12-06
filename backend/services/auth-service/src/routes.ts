@@ -2,17 +2,9 @@ import { Router } from 'express';
 import { register, login, me } from './authController';
 import { authenticateToken } from './authService';
 
-// Importar getTiposPresentacion y updateInsumo
-import { 
-    getInsumos, 
-    createInsumo, 
-    deleteInsumo, 
-    updateInsumo, 
-    getTiposInsumo, 
-    getTiposPresentacion 
-} from './insumoController';
-
-import { getRecetas, createReceta, deleteReceta, updateReceta, createPedido } from './recetaController';
+import { getInsumos, createInsumo, deleteInsumo, updateInsumo, getTiposInsumo, getTiposPresentacion } from './insumoController';
+// Importamos getPedidos
+import { getRecetas, createReceta, deleteReceta, updateReceta, createPedido, getPedidos } from './recetaController';
 import { getCajaDiaria, abrirCaja, cerrarCaja, getHistorialCajas } from './cajaController';
 import { registrarIngreso, getMovimientosHoy } from './finanzasController';
 
@@ -26,17 +18,19 @@ router.get('/auth/me', authenticateToken, me);
 // Insumos
 router.get('/insumos', authenticateToken, getInsumos);
 router.get('/insumos/tipos', authenticateToken, getTiposInsumo);
-router.get('/insumos/presentaciones', authenticateToken, getTiposPresentacion); // <--- NUEVA
+router.get('/insumos/presentaciones', authenticateToken, getTiposPresentacion);
 router.post('/insumos', authenticateToken, createInsumo);
-router.put('/insumos/:id', authenticateToken, updateInsumo); // <--- NUEVA (Modificar)
+router.put('/insumos/:id', authenticateToken, updateInsumo);
 router.delete('/insumos/:id', authenticateToken, deleteInsumo);
 
-// Recetas
+// Recetas y Pedidos
 router.get('/recetas', authenticateToken, getRecetas);
 router.post('/recetas', authenticateToken, createReceta);
 router.put('/recetas/:id', authenticateToken, updateReceta);
 router.delete('/recetas/:id', authenticateToken, deleteReceta);
+
 router.post('/pedidos', authenticateToken, createPedido);
+router.get('/pedidos', authenticateToken, getPedidos); // <--- NUEVA RUTA
 
 // Caja
 router.get('/caja/hoy', authenticateToken, getCajaDiaria);

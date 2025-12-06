@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 import { prisma } from './database';
 
-// --- OBTENER TIPOS DE INSUMO (CATÁLOGO) ---
+// --- OBTENER TIPOS DE INSUMO (CATÁLOGO SIMPLIFICADO) ---
 export const getTiposInsumo = async (req: Request, res: Response) => {
     try {
         let tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
+        
+        // Si está vacío, creamos SOLO los sólidos solicitados
         if (tipos.length === 0) {
             await prisma.tipoInsumo.createMany({
                 data: [
@@ -13,8 +15,8 @@ export const getTiposInsumo = async (req: Request, res: Response) => {
                     { nombre: "Levadura" },
                     { nombre: "Maicena" },
                     { nombre: "Manteca" },
-                    { nombre: "Mejorador" }, 
-                    { nombre: "Sal" },
+                    { nombre: "Mejorador de Pan" },
+                    { nombre: "Sal" }
                 ]
             });
             tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
@@ -25,20 +27,20 @@ export const getTiposInsumo = async (req: Request, res: Response) => {
     }
 };
 
-// --- NUEVO: OBTENER PRESENTACIONES (CATÁLOGO) ---
+// --- OBTENER PRESENTACIONES (CATÁLOGO SIMPLIFICADO) ---
 export const getTiposPresentacion = async (req: Request, res: Response) => {
     try {
         let tipos = await prisma.tipoPresentacion.findMany({ orderBy: { nombre: 'asc' } });
         
-        // Sembrar datos si está vacío
+        // Si está vacío, creamos SOLO las presentaciones solicitadas
         if (tipos.length === 0) {
             await prisma.tipoPresentacion.createMany({
                 data: [
                     { nombre: "Bolsa Individual" },
                     { nombre: "Caja" },
+                    { nombre: "Paquete" },
                     { nombre: "Saco" },
-                    { nombre: "Tarro" },
-                    { nombre: "Paquete" }
+                    { nombre: "Tarro" }
                 ]
             });
             tipos = await prisma.tipoPresentacion.findMany({ orderBy: { nombre: 'asc' } });
@@ -49,6 +51,7 @@ export const getTiposPresentacion = async (req: Request, res: Response) => {
     }
 };
 
+// --- LISTAR INVENTARIO ---
 export const getInsumos = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -57,7 +60,7 @@ export const getInsumos = async (req: Request, res: Response) => {
 
     const insumos = await prisma.insumo.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { nombre: 'asc' }
     });
     res.json(insumos);
   } catch (error) {
@@ -65,43 +68,77 @@ export const getInsumos = async (req: Request, res: Response) => {
   }
 };
 
+// --- CREAR O ACTUALIZAR INSUMO (LÓGICA INTELIGENTE) ---
 export const createInsumo = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
     const userId = req.user?.id;
     const { nombre, presentacion, cantidadCompra, unidadMedida, valorCompra } = req.body;
 
-    const cantidad = parseFloat(cantidadCompra);
-    const valor = parseInt(valorCompra);
+    const cantidadNueva = parseFloat(cantidadCompra);
+    const valorNuevo = parseInt(valorCompra);
     
-    let stockGramos = 0;
-    if (unidadMedida === 'kg' || unidadMedida === 'lt') {
-      stockGramos = cantidad * 1000;
+    // 1. Convertir todo a GRAMOS (Solo trabajamos sólidos ahora)
+    let gramosNuevos = 0;
+    
+    // Aunque solo sean sólidos, mantenemos la conversión básica por si el usuario elige "kg"
+    if (unidadMedida === 'kg') {
+        gramosNuevos = cantidadNueva * 1000;
     } else {
-      stockGramos = cantidad;
+        gramosNuevos = cantidadNueva; // Asumimos gramos
     }
 
-    const costoPorGramo = stockGramos > 0 ? (valor / stockGramos) : 0;
+    const costoPorGramoNuevo = gramosNuevos > 0 ? (valorNuevo / gramosNuevos) : 0;
 
-    const insumo = await prisma.insumo.create({
-      data: {
-        nombre, 
-        presentacion,
-        cantidadCompra: cantidad,
-        unidadMedida,
-        valorCompra: valor,
-        stockGramos,
-        costoPorGramo,
-        userId
-      }
+    // 2. BUSCAR SI YA EXISTE EL INSUMO (Por nombre exacto)
+    const insumoExistente = await prisma.insumo.findFirst({
+        where: { userId, nombre } 
     });
-    res.json(insumo);
+
+    if (insumoExistente) {
+        // ACTUALIZAR EXISTENTE (PROMEDIO PONDERADO)
+        const valorStockActual = insumoExistente.stockGramos * insumoExistente.costoPorGramo;
+        const stockTotalGramos = insumoExistente.stockGramos + gramosNuevos;
+        
+        let nuevoCostoPromedio = insumoExistente.costoPorGramo;
+        if (stockTotalGramos > 0) {
+            nuevoCostoPromedio = (valorStockActual + valorNuevo) / stockTotalGramos;
+        }
+
+        const insumoActualizado = await prisma.insumo.update({
+            where: { id: insumoExistente.id },
+            data: {
+                stockGramos: stockTotalGramos,
+                costoPorGramo: nuevoCostoPromedio,
+                presentacion, // Actualizamos la referencia
+                cantidadCompra: insumoExistente.cantidadCompra + cantidadNueva,
+                valorCompra: valorNuevo
+            }
+        });
+        return res.json(insumoActualizado);
+    } else {
+        // CREAR NUEVO
+        const insumo = await prisma.insumo.create({
+            data: {
+                nombre, 
+                presentacion,
+                cantidadCompra: cantidadNueva,
+                unidadMedida,
+                valorCompra: valorNuevo,
+                stockGramos: gramosNuevos,
+                costoPorGramo: costoPorGramoNuevo,
+                userId
+            }
+        });
+        return res.json(insumo);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear insumo' });
+    console.error(error);
+    res.status(500).json({ error: 'Error al procesar insumo' });
   }
 };
 
-// --- NUEVO: ACTUALIZAR INSUMO ---
+// --- MODIFICAR INSUMO ---
 export const updateInsumo = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -110,9 +147,8 @@ export const updateInsumo = async (req: Request, res: Response) => {
         const cantidad = parseFloat(cantidadCompra);
         const valor = parseInt(valorCompra);
         
-        // Recalcular stock y costos
         let stockGramos = 0;
-        if (unidadMedida === 'kg' || unidadMedida === 'lt') {
+        if (unidadMedida === 'kg') {
             stockGramos = cantidad * 1000;
         } else {
             stockGramos = cantidad;
@@ -127,7 +163,7 @@ export const updateInsumo = async (req: Request, res: Response) => {
                 cantidadCompra: cantidad,
                 unidadMedida,
                 valorCompra: valor,
-                stockGramos,
+                stockGramos, 
                 costoPorGramo
             }
         });

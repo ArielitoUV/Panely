@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from './database';
 
-// --- OBTENER TODAS LAS RECETAS ---
 export const getRecetas = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -13,7 +12,7 @@ export const getRecetas = async (req: Request, res: Response) => {
       include: {
         ingredientes: {
           include: {
-            insumo: true // Traemos info del insumo (costo, nombre)
+            insumo: true
           }
         }
       }
@@ -24,7 +23,6 @@ export const getRecetas = async (req: Request, res: Response) => {
   }
 };
 
-// --- CREAR RECETA ---
 export const createReceta = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -43,26 +41,20 @@ export const createReceta = async (req: Request, res: Response) => {
           }))
         }
       },
-      include: { ingredientes: true } // typo fix: ingredientes
+      include: { ingredientes: true }
     });
 
     res.json(receta);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Error al crear receta' });
   }
 };
 
-// --- ACTUALIZAR RECETA (Nuevo) ---
 export const updateReceta = async (req: Request, res: Response) => {
     try {
-        // @ts-ignore
-        const userId = req.user?.id;
         const { id } = req.params;
         const { nombre, cantidadBase, ingredientes } = req.body;
 
-        // Usamos una transacción: Borramos ingredientes viejos y ponemos los nuevos
-        // Es más fácil que intentar actualizar uno por uno
         const update = await prisma.$transaction([
             prisma.ingredienteReceta.deleteMany({ where: { recetaId: Number(id) } }),
             prisma.receta.update({
@@ -81,14 +73,12 @@ export const updateReceta = async (req: Request, res: Response) => {
             })
         ]);
 
-        res.json(update[1]); // Devolvemos la receta actualizada
+        res.json(update[1]);
     } catch (error) {
-        console.error(error);
         res.status(500).json({ error: "Error al actualizar receta" });
     }
 }
 
-// --- BORRAR RECETA ---
 export const deleteReceta = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -99,7 +89,23 @@ export const deleteReceta = async (req: Request, res: Response) => {
     }
 }
 
-// --- GUARDAR PEDIDO ---
+// --- NUEVO: OBTENER HISTORIAL DE PEDIDOS ---
+export const getPedidos = async (req: Request, res: Response) => {
+    try {
+        // @ts-ignore
+        const userId = req.user?.id;
+        const pedidos = await prisma.pedido.findMany({
+            where: { userId },
+            orderBy: { fecha: 'desc' },
+            include: { receta: true } // Incluimos datos de la receta para ver el nombre
+        });
+        res.json(pedidos);
+    } catch (error) {
+        res.status(500).json({ error: "Error al cargar historial" });
+    }
+}
+
+// CREAR PEDIDO Y DESCONTAR STOCK
 export const createPedido = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -112,14 +118,36 @@ export const createPedido = async (req: Request, res: Response) => {
         cantidadPanes: Number(cantidadPanes),
         montoTotal: Number(montoTotal),
         recetaId: Number(recetaId),
-        resumen,
+        resumen, 
         userId
       }
     });
 
+    // Descontar Stock
+    const resumenObj = JSON.parse(resumen);
+    const ingredientesUsados = resumenObj.ingredientes || [];
+
+    if (ingredientesUsados.length > 0) {
+        await prisma.$transaction(
+            ingredientesUsados.map((ing: any) => {
+                if (ing.insumoId) {
+                    return prisma.insumo.update({
+                        where: { id: ing.insumoId },
+                        data: { stockGramos: { decrement: ing.cantidad } }
+                    });
+                } else {
+                    return prisma.insumo.updateMany({
+                         where: { userId, nombre: ing.nombre },
+                         data: { stockGramos: { decrement: ing.cantidad } }
+                    });
+                }
+            })
+        );
+    }
+
     res.json(pedido);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error al guardar pedido' });
+    console.error("Error en pedido:", error);
+    res.status(500).json({ error: 'Error al procesar el pedido' });
   }
 };

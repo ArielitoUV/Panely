@@ -1,148 +1,116 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { usePathname } from "next/navigation"
-import {
-  Home,
-  TrendingUp,
-  TrendingDown,
-  Package,
-  Calculator,
-  FileBarChart,
-  Settings,
-  X,
-  ChevronRight,
+import { usePathname, useRouter } from "next/navigation"
+import { 
+  Home, 
+  TrendingUp, 
+  TrendingDown, 
+  Package, 
+  FileBarChart, 
+  Settings, 
+  X, 
   LogOut,
+  Calculator,
+  LayoutDashboard
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
+import { useToast } from "@/components/ui/use-toast"
 
 const navigation = [
   { name: "Inicio", href: "/dashboard", icon: Home },
   { name: "Ingresos", href: "/dashboard/ingresos", icon: TrendingUp },
   { name: "Egresos", href: "/dashboard/egresos", icon: TrendingDown },
   { name: "Inventario", href: "/dashboard/inventario", icon: Package },
-    { name: "Cálculo Insumos", href: "/dashboard/calculoInsumo", icon: Calculator }, // <--- Módulo Nuevo
+  { name: "Cálculo Insumos", href: "/dashboard/calculoInsumo", icon: Calculator },
   { name: "Reportes", href: "/dashboard/reportes", icon: FileBarChart },
   { name: "Configuración", href: "/dashboard/configuracion", icon: Settings },
 ]
 
-interface User {
-  nombre: string
-  apellido: string
-  email: string
-  nombreEmpresa?: string
-}
-
 interface DashboardSidebarProps {
-  isOpen: boolean
-  setIsOpen: (open: boolean) => void
+  open: boolean
+  setOpen: (open: boolean) => void
 }
 
-export function DashboardSidebar({ isOpen, setIsOpen }: DashboardSidebarProps) {
+export function DashboardSidebar({ open, setOpen }: DashboardSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { toast } = useToast()
+  const [isMobile, setIsMobile] = useState(false)
 
-  // CARGAR USUARIO DESDE localStorage AL MONTAR
   useEffect(() => {
-    const stored = localStorage.getItem("user")
-    if (stored) {
-      setUser(JSON.parse(stored))
-    }
+    const checkScreenSize = () => setIsMobile(window.innerWidth < 1024)
+    checkScreenSize()
+    window.addEventListener("resize", checkScreenSize)
+    return () => window.removeEventListener("resize", checkScreenSize)
   }, [])
 
   const handleLogout = () => {
-    localStorage.clear()
-    sessionStorage.clear()
-    router.push("/")
+    localStorage.removeItem("accessToken")
+    localStorage.removeItem("refreshToken")
+    localStorage.removeItem("user")
+    toast({ title: "Sesión cerrada", description: "Has cerrado sesión correctamente" })
+    router.push("/auth/iniciar-sesion")
   }
-
-  // Iniciales para el avatar
-  const initials = user ? `${user.nombre.charAt(0)}${user.apellido.charAt(0)}`.toUpperCase() : "US"
 
   return (
     <>
       {/* Overlay móvil */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsOpen(false)} />
+      {open && isMobile && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />
       )}
 
-      <aside
-        className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 w-72 bg-card border-r flex flex-col transition-transform duration-300",
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+      <aside className={cn(
+          "fixed top-0 left-0 z-50 h-screen bg-card border-r transition-transform duration-300 ease-in-out flex flex-col",
+          // Lógica de ancho: 
+          // Móvil: Oculto (-translate-x-full) o Visible (translate-0 w-64)
+          // Escritorio: Siempre visible y ancho fijo w-64 (para ver nombres)
+          open ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0 lg:w-64"
         )}
       >
-        {/* Header */}
-        <div className="flex h-16 items-center justify-between px-6 border-b">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-xl">P</span>
-            </div>
-            <div>
-              <span className="font-bold text-lg">Panely</span>
-              <p className="text-xs text-muted-foreground">Gestión de Panadería</p>
-            </div>
+        {/* Header Sidebar */}
+        <div className="h-16 flex items-center justify-between px-6 border-b">
+          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-primary"> 
+            <LayoutDashboard className="h-6 w-6 text-orange-500" />
+            <span>Panely</span>
           </Link>
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsOpen(false)}>
+          
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setOpen(false)}>
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Navegación */}
-        <nav className="flex-1 overflow-y-auto py-6 px-3">
-          <div className="space-y-1">
+        <div className="flex-1 overflow-y-auto py-6 px-4">
+          <nav className="space-y-2">
             {navigation.map((item) => {
               const isActive = pathname === item.href
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  onClick={() => setIsOpen(false)}
+                  onClick={() => isMobile && setOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all group",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-md"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    "flex items-center gap-3 px-4 py-3 rounded-md transition-colors text-sm",
+                    isActive 
+                      ? "bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 font-medium shadow-sm border border-orange-100 dark:border-orange-900" 
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
-                  <span className="flex-1">{item.name}</span>
-                  {isActive && <ChevronRight className="h-4 w-4" />}
+                  <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-orange-600 dark:text-orange-400")} />
+                  {/* Nombre siempre visible porque el ancho es fijo w-64 */}
+                  <span>{item.name}</span>
                 </Link>
               )
             })}
-          </div>
-        </nav>
+          </nav>
+        </div>
 
-        <Separator />
-
-        {/* Perfil + Cerrar sesión */}
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/50">
-            <Avatar className="h-11 w-11 border-2 border-background">
-              <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">
-                {user?.nombre} {user?.apellido}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">{user?.nombreEmpresa || user?.email}</p>
-            </div>
-          </div>
-
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50"
-            onClick={handleLogout}
-          >
+        {/* Footer Sidebar */}
+        <div className="p-4 border-t bg-muted/10">
+          <Button variant="outline" className="w-full gap-2 border-dashed text-muted-foreground hover:text-destructive hover:border-destructive justify-start px-4" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
             <span>Cerrar Sesión</span>
           </Button>
