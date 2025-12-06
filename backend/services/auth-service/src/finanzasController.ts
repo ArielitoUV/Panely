@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from './database';
 
-// ... (Tus funciones anteriores registrarIngreso, registrarEgreso, etc. se quedan igual) ...
-
+// ... (registrarIngreso, registrarEgreso, getMovimientosHoy, getEgresos IGUAL QUE ANTES) ...
 export const registrarIngreso = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -36,19 +35,17 @@ export const registrarEgreso = async (req: Request, res: Response) => {
     if (isNaN(montoInt) || montoInt <= 0) return res.status(400).json({ error: "Monto inválido" });
 
     const cajaAbierta = await prisma.cajaDiaria.findFirst({ where: { userId, estado: "ABIERTA" } });
-    if (!cajaAbierta) return res.status(400).json({ error: "Abre la caja primero." });
+    if (!cajaAbierta) return res.status(400).json({ error: "Debes abrir la caja." });
 
     await prisma.$transaction(async (tx) => {
         await tx.egreso.create({
             data: { monto: montoInt, descripcion, categoria: categoria || "GASTO_GENERAL", userId }
         });
-
         await tx.cajaDiaria.update({
             where: { id: cajaAbierta.id },
             data: { totalFinal: { decrement: montoInt }, efectivo: { decrement: montoInt } }
         });
     });
-
     res.json({ message: "Gasto registrado" });
   } catch (error) { res.status(500).json({ error: 'Error' }); }
 };
@@ -71,61 +68,40 @@ export const getEgresos = async (req: Request, res: Response) => {
         res.json(egresos);
     } catch (e) { res.status(500).json({ error: "Error" }); }
 }
-// --- NUEVO: DATOS PARA EL DASHBOARD EN TIEMPO REAL ---
+
+// --- DASHBOARD TIEMPO REAL ---
 export const getDashboardData = async (req: Request, res: Response) => {
     try {
         // @ts-ignore
         const userId = req.user?.id;
         
-        // 1. Definir Rango de la Semana Actual (Lunes a Domingo)
+        // Semana actual
         const hoy = new Date();
-        const diaSemana = hoy.getDay(); // 0 (Dom) - 6 (Sab)
-        const diff = hoy.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1); // Ajuste al Lunes
-        const lunes = new Date(hoy.setDate(diff));
-        lunes.setHours(0,0,0,0);
-        
-        const domingo = new Date(lunes);
-        domingo.setDate(lunes.getDate() + 6);
-        domingo.setHours(23,59,59,999);
+        const diaSemana = hoy.getDay(); 
+        const diff = hoy.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1); 
+        const lunes = new Date(hoy.setDate(diff)); lunes.setHours(0,0,0,0);
+        const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6); domingo.setHours(23,59,59,999);
 
-        // 2. Consultar Ingresos y Egresos de la Semana
-        const ingresos = await prisma.ingreso.findMany({
-            where: { userId, fecha: { gte: lunes, lte: domingo } }
-        });
+        // Consultar Tablas Reales
+        const ingresos = await prisma.ingreso.findMany({ where: { userId, fecha: { gte: lunes, lte: domingo } } });
+        const egresos = await prisma.egreso.findMany({ where: { userId, fecha: { gte: lunes, lte: domingo } } });
 
-        const egresos = await prisma.egreso.findMany({
-            where: { userId, fecha: { gte: lunes, lte: domingo } }
-        });
-
-        // 3. Calcular Totales
+        // Cálculos
         const totalIngresos = ingresos.reduce((sum, i) => sum + i.monto, 0);
         const totalEgresos = egresos.reduce((sum, e) => sum + e.monto, 0);
         const gananciaNeta = totalIngresos - totalEgresos;
 
-        // 4. Preparar Datos para el Gráfico (Agrupados por Día)
+        // Gráfico
         const diasSemana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
         const grafico = diasSemana.map((nombreDia, index) => {
-            // Calcular fecha del día actual en el loop
-            const fechaDia = new Date(lunes);
-            fechaDia.setDate(lunes.getDate() + index);
-            
+            const fechaDia = new Date(lunes); fechaDia.setDate(lunes.getDate() + index);
             const fechaInicio = new Date(fechaDia); fechaInicio.setHours(0,0,0,0);
             const fechaFin = new Date(fechaDia); fechaFin.setHours(23,59,59,999);
 
-            // Filtrar movimientos de ese día específico
-            const ingresosDia = ingresos
-                .filter(i => i.fecha >= fechaInicio && i.fecha <= fechaFin)
-                .reduce((sum, i) => sum + i.monto, 0);
-            
-            const egresosDia = egresos
-                .filter(e => e.fecha >= fechaInicio && e.fecha <= fechaFin)
-                .reduce((sum, e) => sum + e.monto, 0);
+            const ing = ingresos.filter(i => i.fecha >= fechaInicio && i.fecha <= fechaFin).reduce((s, i) => s + i.monto, 0);
+            const egr = egresos.filter(e => e.fecha >= fechaInicio && e.fecha <= fechaFin).reduce((s, e) => s + e.monto, 0);
 
-            return {
-                name: nombreDia,
-                ingresos: ingresosDia,
-                egresos: egresosDia
-            };
+            return { name: nombreDia, ingresos: ing, egresos: egr };
         });
 
         res.json({
@@ -135,8 +111,5 @@ export const getDashboardData = async (req: Request, res: Response) => {
             grafico
         });
 
-    } catch (error) {
-        console.error("Error dashboard data:", error);
-        res.status(500).json({ error: "Error calculando dashboard" });
-    }
+    } catch (error) { res.status(500).json({ error: "Error dashboard" }); }
 }

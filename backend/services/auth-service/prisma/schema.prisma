@@ -107,22 +107,30 @@ model Pedido {
   @@index([recetaId])
 }
 
+// --- CAJA DIARIA MEJORADA ---
 model CajaDiaria {
   id            Int      @id @default(autoincrement())
   fecha         DateTime @unique
   montoInicial  Int
+  
+  // Detalle de Ingresos (Ventas)
   efectivo      Int      @default(0)
   tarjeta       Int      @default(0)
   transferencia Int      @default(0)
-  totalFinal    Int
+  
+  // Resultado Final (Se calculan al cerrar)
+  totalVentas   Int      @default(0) // Suma de ingresos
+  totalEgresos  Int      @default(0) // Suma de egresos
+  gananciaNeta  Int      @default(0) // Ventas - Egresos
+  
+  totalFinal    Int // Dinero en caja (Efectivo + Inicial - Gastos en Efectivo)
+  
   estado        String   @default("ABIERTA")
   notas         String?
   userId        Int
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   @@index([userId])
   @@index([fecha])
 }
