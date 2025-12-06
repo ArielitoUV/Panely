@@ -1,13 +1,11 @@
-import { Request, Response, NextFunction } from 'express';
-import { prisma } from './database';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { prisma } from './database';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_defensa';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret';
 
-// Middleware
-export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+// Middleware para proteger rutas
+export const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -15,59 +13,46 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 
   jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
     if (err) return res.sendStatus(403);
-    // @ts-ignore
     req.user = user;
     next();
   });
 };
 
-export const generateTokens = async (userId: number) => {
-  const accessToken = jwt.sign({ id: userId }, JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ id: userId }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
+// Función para generar tokens (Login/Registro)
+export const generateTokens = async (user: any) => {
+  const userId = Number(user.id); // Aseguramos que sea número
 
-  await prisma.refreshToken.deleteMany({ where: { userId } });
+  // Incluimos el rol en el token
+  const accessToken = jwt.sign(
+    { id: userId, role: user.role, email: user.email }, 
+    JWT_SECRET, 
+    { expiresIn: '15m' }
+  );
   
-  await prisma.refreshToken.create({
-    data: {
-      token: refreshToken,
-      userId: userId,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    }
-  });
+  const refreshToken = jwt.sign(
+    { id: userId }, 
+    JWT_REFRESH_SECRET, 
+    { expiresIn: '7d' }
+  );
+
+  try {
+    // Borrar tokens viejos del usuario para no acumular basura
+    await prisma.refreshToken.deleteMany({
+      where: { userId: userId }
+    });
+
+    // Guardar el nuevo refresh token
+    await prisma.refreshToken.create({
+      data: {
+        userId: userId,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      }
+    });
+  } catch (error) {
+    console.error("Error guardando tokens:", error);
+    // Continuamos aunque falle el guardado del refresh para no bloquear el login
+  }
 
   return { accessToken, refreshToken };
-};
-
-// --- AQUÍ ESTABA EL ERROR: AHORA DEVOLVEMOS EL USUARIO ---
-export const registerUser = async (data: any) => {
-  const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
-  if (existingUser) throw new Error("El email ya está registrado");
-
-  const hashedPassword = await bcrypt.hash(data.password, 10);
-  
-  const user = await prisma.user.create({
-    data: {
-      email: data.email,
-      password: hashedPassword,
-      nombre: data.nombre,
-      apellido: data.apellido,
-      nombreEmpresa: data.nombreEmpresa,
-      telefono: data.telefono
-    },
-  });
-  
-  const tokens = await generateTokens(user.id);
-  // Devolvemos tokens Y el objeto usuario
-  return { ...tokens, user }; 
-};
-
-export const loginUser = async (data: any) => {
-  const user = await prisma.user.findUnique({ where: { email: data.email } });
-  if (!user) throw new Error("Credenciales inválidas");
-
-  const isValid = await bcrypt.compare(data.password, user.password);
-  if (!isValid) throw new Error("Credenciales inválidas");
-
-  const tokens = await generateTokens(user.id);
-  return { ...tokens, user };
 };

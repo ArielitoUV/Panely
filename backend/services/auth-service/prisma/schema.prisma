@@ -13,19 +13,20 @@ model User {
   password      String
   nombre        String
   apellido      String
+  role          String   @default("USER") // "USER" o "ADMIN"
   telefono      String?
   nombreEmpresa String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ... (resto de relaciones igual: insumos, refreshTokens, cajaDiaria, etc.)
   insumos       Insumo[]
   refreshTokens RefreshToken[]
   cajaDiaria    CajaDiaria[]
   recetas       Receta[]
   pedidos       Pedido[]
-  ingreso       Ingreso[]
-  egresos       Egreso[] // <--- Relación nueva
-
+  ingresos      Ingreso[]
+  egresos       Egreso[]
 }
 
 model RefreshToken {

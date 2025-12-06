@@ -1,268 +1,182 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { FileText, Download, Calendar, Filter } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Calendar, FileText, TrendingUp, Download, Loader2 } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
-import { useToast } from "@/components/ui/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
-type ReportType = "daily" | "weekly" | "monthly" | null
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function ReportesPage() {
-  const { toast } = useToast()
-  const [reportType, setReportType] = useState<ReportType>(null)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [rango, setRango] = useState("diario")
+  const [dataReporte, setDataReporte] = useState<any>(null)
+  const [user, setUser] = useState<any>(null)
 
-  // --- UTILIDADES DE FECHAS ---
-  const getMinDate = () => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - 3)
-    return date.toISOString().split("T")[0]
+  useEffect(() => {
+      const u = localStorage.getItem("user")
+      if(u) setUser(JSON.parse(u))
+  }, [])
+
+  const generarReporte = async () => {
+      const token = localStorage.getItem("accessToken")
+      try {
+          const res = await fetch(`${API_URL}/reportes?rango=${rango}`, {
+              headers: { Authorization: `Bearer ${token}` }
+          })
+          if(res.ok) {
+              setDataReporte(await res.json())
+          }
+      } catch(e) { console.error(e) }
   }
 
-  const getTodayDate = () => {
-    return new Date().toISOString().split("T")[0]
-  }
+  // Cargar reporte al cambiar filtro
+  useEffect(() => { generarReporte() }, [rango])
 
-  const getMondayOfCurrentWeek = () => {
-    const today = new Date()
-    const day = today.getDay()
-    const diff = day === 0 ? -6 : 1 - day
-    const monday = new Date(today)
-    monday.setDate(today.getDate() + diff)
-    return monday.toISOString().split("T")[0]
-  }
+  const descargarPDF = () => {
+      if (!dataReporte) return;
 
-  // --- LÓGICA DE GENERACIÓN DE PDF ---
-  const generatePDF = async () => {
-    setIsGenerating(true)
-    
-    // Simulación de retardo para que se vea la carga
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    try {
-      const doc = new jsPDF()
-
-      // 1. Encabezado del Reporte
-      doc.setFontSize(20)
-      doc.text("Reporte Financiero - Panely", 14, 22)
+      const doc = new jsPDF();
+      const empresa = user?.nombreEmpresa || "Panadería";
       
-      doc.setFontSize(11)
-      doc.text(`Tipo de Reporte: ${reportType === 'daily' ? 'Diario' : reportType === 'weekly' ? 'Semanal' : 'Mensual'}`, 14, 32)
-      doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString()}`, 14, 38)
+      // Encabezado
+      doc.setFontSize(20);
+      doc.text(`Reporte Financiero - ${rango.toUpperCase()}`, 14, 22);
+      doc.setFontSize(12);
+      doc.text(`Empresa: ${empresa}`, 14, 30);
+      doc.text(`Fecha Emisión: ${new Date().toLocaleDateString()}`, 14, 36);
       
-      if (startDate && endDate) {
-         doc.text(`Período: ${startDate} al ${endDate}`, 14, 44)
-      }
+      // Resumen
+      doc.setFillColor(240, 240, 240);
+      doc.rect(14, 45, 180, 25, 'F');
+      doc.setFontSize(10);
+      doc.text(`Total Ingresos: $${dataReporte.resumen.totalIngresos.toLocaleString()}`, 20, 55);
+      doc.text(`Total Egresos: $${dataReporte.resumen.totalEgresos.toLocaleString()}`, 20, 65);
+      
+      doc.setFontSize(14);
+      doc.setTextColor(dataReporte.resumen.ganancia >= 0 ? 0 : 200, dataReporte.resumen.ganancia >= 0 ? 100 : 0, 0);
+      doc.text(`Ganancia Neta: $${dataReporte.resumen.ganancia.toLocaleString()}`, 100, 60);
+      doc.setTextColor(0,0,0);
 
-      // 2. Datos Simulados (Esto vendría de tu base de datos después)
-      const resumen = {
-          ingresos: 150000,
-          egresos: 45000,
-          ganancia: 105000
-      }
-
-      // 3. Tabla de Resumen
+      // Tabla Ingresos
+      doc.text("Detalle de Ingresos", 14, 85);
+      const rowsIngresos = dataReporte.detalles.ingresos.map((i: any) => [
+          new Date(i.fecha).toLocaleDateString(),
+          i.descripcion,
+          i.metodoPago,
+          `$${i.monto.toLocaleString()}`
+      ]);
+      
       autoTable(doc, {
-        startY: 50,
-        head: [['Concepto', 'Monto']],
-        body: [
-            ['Total Ingresos', `$${resumen.ingresos.toLocaleString()}`],
-            ['Total Egresos', `$${resumen.egresos.toLocaleString()}`],
-            ['Ganancia Neta', `$${resumen.ganancia.toLocaleString()}`],
-        ],
-        theme: 'grid',
-        headStyles: { fillColor: [234, 88, 12] }, // Color naranja Panely
-      })
+          startY: 90,
+          head: [['Fecha', 'Descripción', 'Pago', 'Monto']],
+          body: rowsIngresos,
+      });
 
-      // 4. Tabla Detallada (Ejemplo)
-      const movimientos = [
-          ['01/12/2024', 'Venta de Pan', 'Ingreso', '$25,000'],
-          ['01/12/2024', 'Compra Harina', 'Egreso', '$10,000'],
-          ['02/12/2024', 'Venta Pasteles', 'Ingreso', '$15,000'],
-          ['03/12/2024', 'Pago Luz', 'Egreso', '$35,000'],
-      ]
+      // Tabla Egresos
+      // @ts-ignore
+      const finalY = doc.lastAutoTable.finalY || 150;
+      doc.text("Detalle de Egresos", 14, finalY + 15);
+      
+      const rowsEgresos = dataReporte.detalles.egresos.map((e: any) => [
+          new Date(e.fecha).toLocaleDateString(),
+          e.descripcion,
+          e.categoria,
+          `$${e.monto.toLocaleString()}`
+      ]);
 
       autoTable(doc, {
-        startY: (doc as any).lastAutoTable.finalY + 10,
-        head: [['Fecha', 'Descripción', 'Tipo', 'Monto']],
-        body: movimientos,
-        theme: 'striped',
-      })
+          startY: finalY + 20,
+          head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
+          body: rowsEgresos,
+      });
 
-      // 5. Guardar PDF
-      doc.save(`reporte_panely_${reportType}_${getTodayDate()}.pdf`)
-      
-      toast({
-        title: "¡Reporte Descargado!",
-        description: "El archivo PDF se ha generado correctamente.",
-        className: "bg-green-600 text-white"
-      })
-
-    } catch (error) {
-        console.error(error)
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "No se pudo generar el reporte PDF.",
-        })
-    } finally {
-        setIsGenerating(false)
-    }
+      doc.save(`reporte_${rango}_${new Date().toISOString().split('T')[0]}.pdf`);
   }
 
   return (
-    <div className="min-h-screen p-6 space-y-8">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight text-balance">Reportes</h1>
-        <p className="text-muted-foreground text-pretty">Genera y descarga informes detallados de tu negocio.</p>
+    <div className="space-y-6 p-6 max-w-6xl mx-auto">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Reportes</h1>
+        <div className="flex gap-2">
+            <Select value={rango} onValueChange={setRango}>
+                <SelectTrigger className="w-[180px]">
+                    <Filter className="w-4 h-4 mr-2" />
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="diario">Reporte Diario</SelectItem>
+                    <SelectItem value="semanal">Reporte Semanal</SelectItem>
+                    <SelectItem value="mensual">Reporte Mensual</SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
       </div>
 
-      {/* Selector de tipo de reporte */}
-      <Card>
-        <CardHeader>
-            <CardTitle>Configurar Reporte</CardTitle>
-            <CardDescription>Selecciona el período que deseas consultar.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Reporte Diario */}
-                <button
-                onClick={() => {
-                    setReportType("daily")
-                    setStartDate(getTodayDate())
-                    setEndDate(getTodayDate())
-                }}
-                className={`p-6 border-2 rounded-lg transition-all hover:border-primary/50 hover:shadow-sm ${
-                    reportType === "daily" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-muted bg-card"
-                }`}
-                >
-                <div className="flex flex-col items-center gap-3 text-center">
-                    <div className={`p-3 rounded-full ${reportType === "daily" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                         <FileText className="h-6 w-6" />
-                    </div>
-                    <div>
-                    <h3 className="font-semibold text-lg">Reporte Diario</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Movimientos de hoy</p>
-                    </div>
-                </div>
-                </button>
-
-                {/* Reporte Semanal */}
-                <button
-                onClick={() => {
-                    setReportType("weekly")
-                    setStartDate(getMondayOfCurrentWeek())
-                    setEndDate(getTodayDate())
-                }}
-                className={`p-6 border-2 rounded-lg transition-all hover:border-primary/50 hover:shadow-sm ${
-                    reportType === "weekly" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-muted bg-card"
-                }`}
-                >
-                <div className="flex flex-col items-center gap-3 text-center">
-                    <div className={`p-3 rounded-full ${reportType === "weekly" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                        <Calendar className="h-6 w-6" />
-                    </div>
-                    <div>
-                    <h3 className="font-semibold text-lg">Reporte Semanal</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Esta semana en curso</p>
-                    </div>
-                </div>
-                </button>
-
-                {/* Reporte Mensual */}
-                <button
-                onClick={() => {
-                    setReportType("monthly")
-                    setStartDate("")
-                    setEndDate("")
-                }}
-                className={`p-6 border-2 rounded-lg transition-all hover:border-primary/50 hover:shadow-sm ${
-                    reportType === "monthly" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-muted bg-card"
-                }`}
-                >
-                <div className="flex flex-col items-center gap-3 text-center">
-                    <div className={`p-3 rounded-full ${reportType === "monthly" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                        <TrendingUp className="h-6 w-6" />
-                    </div>
-                    <div>
-                    <h3 className="font-semibold text-lg">Reporte Mensual</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Rango personalizado</p>
-                    </div>
-                </div>
-                </button>
+      {dataReporte && (
+        <div className="space-y-6">
+            {/* PREVIEW EN PANTALLA */}
+            <div className="grid grid-cols-3 gap-4">
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Ingresos</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-green-600">${dataReporte.resumen.totalIngresos.toLocaleString()}</div></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Egresos</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-red-600">${dataReporte.resumen.totalEgresos.toLocaleString()}</div></CardContent>
+                </Card>
+                <Card className={dataReporte.resumen.ganancia >= 0 ? "bg-blue-50 dark:bg-blue-950/20" : "bg-red-50"}>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ganancia Neta</CardTitle></CardHeader>
+                    <CardContent><div className="text-2xl font-bold">${dataReporte.resumen.ganancia.toLocaleString()}</div></CardContent>
+                </Card>
             </div>
 
-            {/* Selector de fechas (Solo visible si es mensual o si se quiere ver el rango seleccionado) */}
-            {(reportType === "monthly" || reportType === "weekly") && (
-                <div className="p-4 border rounded-lg bg-muted/20 animate-in fade-in slide-in-from-top-2">
-                <h3 className="font-medium mb-3 flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    Rango Seleccionado
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                    <Label htmlFor="start-date">Desde</Label>
-                    <Input
-                        id="start-date"
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        min={getMinDate()}
-                        max={getTodayDate()}
-                        disabled={reportType === "weekly"} // Bloqueado en semanal para simplificar
-                    />
+            <Card>
+                <CardHeader>
+                    <CardTitle>Vista Previa del Documento</CardTitle>
+                    <CardDescription>Resumen de movimientos del periodo seleccionado.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="rounded-md border p-4 bg-white dark:bg-zinc-950 min-h-[300px]">
+                        <p className="text-center font-bold underline mb-4 uppercase">Reporte {rango}</p>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Descripción</TableHead>
+                                    <TableHead className="text-right">Monto</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {dataReporte.detalles.ingresos.slice(0, 5).map((i:any, k:number) => (
+                                    <TableRow key={`i-${k}`}>
+                                        <TableCell><Badge className="bg-green-500">Ingreso</Badge></TableCell>
+                                        <TableCell>{i.descripcion}</TableCell>
+                                        <TableCell className="text-right">+${i.monto.toLocaleString()}</TableCell>
+                                    </TableRow>
+                                ))}
+                                {dataReporte.detalles.egresos.slice(0, 5).map((e:any, k:number) => (
+                                    <TableRow key={`e-${k}`}>
+                                        <TableCell><Badge variant="destructive">Egreso</Badge></TableCell>
+                                        <TableCell>{e.descripcion}</TableCell>
+                                        <TableCell className="text-right">-${e.monto.toLocaleString()}</TableCell>
+                                    </TableRow>
+                                ))}
+                                <TableRow>
+                                    <TableCell colSpan={3} className="text-center text-xs text-muted-foreground">... y más registros en el PDF</TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
                     </div>
-                    <div className="space-y-2">
-                    <Label htmlFor="end-date">Hasta</Label>
-                    <Input
-                        id="end-date"
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        max={getTodayDate()}
-                        disabled={reportType === "weekly"}
-                    />
-                    </div>
-                </div>
-                </div>
-            )}
-
-            {/* Botón de Acción */}
-            <div className="flex justify-end pt-4">
-                <Button 
-                    size="lg" 
-                    onClick={generatePDF}
-                    disabled={!reportType || isGenerating || (reportType === "monthly" && (!startDate || !endDate))}
-                    className="bg-orange-600 hover:bg-orange-700 min-w-[200px]"
-                >
-                    {isGenerating ? (
-                        <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generando...
-                        </>
-                    ) : (
-                        <>
-                            <Download className="mr-2 h-5 w-5" /> Descargar PDF
-                        </>
-                    )}
-                </Button>
-            </div>
-        </CardContent>
-      </Card>
-
-      {/* Vista Previa (Placeholder Visual) */}
-      {!reportType && (
-        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-lg bg-muted/5 text-muted-foreground">
-            <FileText className="h-16 w-16 mb-4 opacity-20" />
-            <p className="text-lg">Selecciona un tipo de reporte para comenzar</p>
+                    <Button className="w-full mt-4 bg-slate-900 text-white hover:bg-slate-800" onClick={descargarPDF}>
+                        <Download className="mr-2 h-4 w-4" /> Descargar PDF Oficial
+                    </Button>
+                </CardContent>
+            </Card>
         </div>
       )}
     </div>
