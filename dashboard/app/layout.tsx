@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AppProvider } from "@/context/app-context" // <--- IMPORTAR ESTO
+import { Toaster } from "@/components/ui/sonner" 
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,10 +26,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* ENVOLVEMOS CON EL PROVIDER */}
+          {/* EL PROVIDER DEBE ENVOLVER TODO */}
           <AppProvider>
              {children}
           </AppProvider>
+          
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

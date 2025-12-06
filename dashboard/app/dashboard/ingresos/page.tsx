@@ -220,7 +220,7 @@ export default function IngresosPage() {
                                 <Label>Monto Inicial</Label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                                    <Input type="number" placeholder="20000" className="pl-7 text-lg font-bold" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} />
+                                    <Input type="number" placeholder="0" className="pl-7 text-lg font-bold" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} />
                                 </div>
                             </div>
                             <Button onClick={handleAbrirCaja} disabled={isSaving} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold">

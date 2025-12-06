@@ -5,7 +5,7 @@ import { getInsumos, createInsumo, deleteInsumo, updateInsumo, getTiposInsumo, g
 import { getRecetas, createReceta, deleteReceta, updateReceta, createPedido, getPedidos } from './recetaController';
 import { getCajaDiaria, abrirCaja, cerrarCaja, getHistorialCajas } from './cajaController';
 // Importamos registrarEgreso
-import { registrarIngreso, getMovimientosHoy, getEgresos, registrarEgreso } from './finanzasController';
+import { registrarIngreso, getMovimientosHoy, getEgresos, registrarEgreso, getDashboardData } from './finanzasController';
 
 const router = Router();
 
@@ -33,10 +33,13 @@ router.post('/caja/abrir', authenticateToken, abrirCaja);
 router.post('/caja/cerrar', authenticateToken, cerrarCaja);
 router.get('/caja/historial', authenticateToken, getHistorialCajas);
 
+// FINANZAS Y DASHBOARD
 router.post('/finanzas/ingreso', authenticateToken, registrarIngreso);
 router.get('/finanzas/movimientos/hoy', authenticateToken, getMovimientosHoy);
-
+router.post('/finanzas/egreso', authenticateToken, registrarEgreso);
 router.get('/finanzas/egresos', authenticateToken, getEgresos);
-router.post('/finanzas/egreso', authenticateToken, registrarEgreso); // <--- NUEVA RUTA
+
+// RUTA MAESTRA PARA EL DASHBOARD
+router.get('/finanzas/dashboard', authenticateToken, getDashboardData); 
 
 export default router;
