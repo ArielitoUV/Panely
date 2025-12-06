@@ -14,7 +14,6 @@ export const adminLogin = async (req: Request, res: Response) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ error: "Contraseña incorrecta" });
 
-        // Validar Rol
         if (user.role !== 'ADMIN') {
             return res.status(403).json({ error: "Acceso denegado: No eres administrador" });
         }
@@ -29,7 +28,7 @@ export const adminLogin = async (req: Request, res: Response) => {
     }
 };
 
-// OBTENER USUARIOS
+// OBTENER TODOS LOS USUARIOS CON SU INVENTARIO
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
         // @ts-ignore
@@ -38,8 +37,13 @@ export const getAllUsers = async (req: Request, res: Response) => {
         const users = await prisma.user.findMany({
             where: { role: 'USER' },
             include: {
+                // Incluimos el inventario completo
+                insumos: {
+                    orderBy: { nombre: 'asc' }
+                },
+                // Mantenemos conteo de lo demás para estadísticas
                 _count: {
-                    select: { insumos: true, recetas: true, pedidos: true }
+                    select: { recetas: true, pedidos: true }
                 }
             },
             orderBy: { createdAt: 'desc' }
