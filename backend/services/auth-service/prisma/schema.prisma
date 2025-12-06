@@ -24,6 +24,8 @@ model User {
   recetas       Receta[]
   pedidos       Pedido[]
   ingreso       Ingreso[]
+  egresos       Egreso[] // <--- Relación nueva
+
 }
 
 model RefreshToken {
@@ -148,4 +150,15 @@ model TipoInsumo {
 model TipoPresentacion {
   id        Int      @id @default(autoincrement())
   nombre    String   @unique // Ej: "Saco", "Caja"
+}
+
+model Egreso {
+  id          Int      @id @default(autoincrement())
+  monto       Int
+  descripcion String
+  categoria   String   @default("COMPRA_INSUMO") // Para filtrar después
+  fecha       DateTime @default(now())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
 }

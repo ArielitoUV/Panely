@@ -52,7 +52,7 @@ export function DashboardSidebar({ open, setOpen }: DashboardSidebarProps) {
     localStorage.removeItem("refreshToken")
     localStorage.removeItem("user")
     toast({ title: "Sesión cerrada", description: "Has cerrado sesión correctamente" })
-    router.push("/auth/iniciar-sesion")
+    router.push("/")
   }
 
   return (

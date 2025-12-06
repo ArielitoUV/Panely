@@ -8,19 +8,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog" // Nuevo para el historial completo
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { useApp } from "@/context/app-context" // <--- IMPORTAMOS EL CONTEXTO
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function IngresosPage() {
+  const { refreshCajaStatus, addNotification } = useApp() // <--- USAMOS LA FUNCIÓN DEL CONTEXTO
+  
   const [caja, setCaja] = useState<any>(null)
-  const [movimientos, setMovimientos] = useState<any[]>([]) // Solo de HOY
-  const [historialCompleto, setHistorialCompleto] = useState<any[]>([]) // Historial TOTAL
+  const [movimientos, setMovimientos] = useState<any[]>([]) 
+  const [historialCompleto, setHistorialCompleto] = useState<any[]>([]) 
   
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [isHistorialOpen, setIsHistorialOpen] = useState(false) // Estado del modal
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false)
 
   const [montoInicial, setMontoInicial] = useState("")
   const [nuevoIngreso, setNuevoIngreso] = useState({
@@ -31,20 +34,17 @@ export default function IngresosPage() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
 
-  // --- CARGA DE DATOS ---
   const fetchData = async () => {
     if (!token) return
     try {
       const headers = { Authorization: `Bearer ${token}` }
       
-      // 1. Estado de Caja
       const resCaja = await fetch(`${API_URL}/caja/hoy`, { headers })
       if (resCaja.ok) {
         const data = await resCaja.json()
         setCaja(data)
       }
 
-      // 2. Movimientos de HOY (Esto hace que al cambiar de día se limpie sola la tabla)
       const resMov = await fetch(`${API_URL}/finanzas/movimientos/hoy`, { headers })
       if (resMov.ok) {
           setMovimientos(await resMov.json())
@@ -57,13 +57,10 @@ export default function IngresosPage() {
     }
   }
 
-  // Función separada para cargar TODO el historial cuando se abre el modal
   const fetchHistorialCompleto = async () => {
       if (!token) return
       try {
-          // Nota: Necesitarás crear este endpoint en backend si quieres ver días anteriores
-          // Por ahora reutilizamos el de hoy o simulamos, pero idealmente sería /finanzas/movimientos/todos
-          const res = await fetch(`${API_URL}/finanzas/movimientos/hoy`, { // Cambiar a /todos si lo implementas
+          const res = await fetch(`${API_URL}/finanzas/movimientos/hoy`, {
               headers: { Authorization: `Bearer ${token}` }
           })
           if(res.ok) setHistorialCompleto(await res.json())
@@ -73,8 +70,6 @@ export default function IngresosPage() {
   useEffect(() => { fetchData() }, [token])
 
   const formatearNumero = (valor: number | string) => Number(valor).toLocaleString("es-CL")
-
-  // --- ACCIONES ---
 
   const handleAbrirCaja = async () => {
     if (!montoInicial) return toast.error("Ingresa un monto inicial")
@@ -87,7 +82,12 @@ export default function IngresosPage() {
         })
         if(res.ok) {
             toast.success("¡Caja abierta!")
-            fetchData()
+            addNotification("Caja Abierta", `Se inició el turno con $${montoInicial}`, "success")
+            
+            // --- CLAVE: AVISAR AL CONTEXTO GLOBAL QUE LA CAJA SE ABRIÓ ---
+            await refreshCajaStatus() 
+            
+            fetchData() // Recargar datos locales de la página
         } else {
             const err = await res.json()
             toast.error(err.error || "Error al abrir")
@@ -107,6 +107,7 @@ export default function IngresosPage() {
           })
           if(res.ok) {
               toast.success("Ingreso registrado")
+              addNotification("Nuevo Ingreso", `${nuevoIngreso.descripcion} - $${nuevoIngreso.monto}`, "info")
               setNuevoIngreso({ monto: "", descripcion: "", metodo: "EFECTIVO" })
               fetchData()
           } else {
@@ -126,6 +127,11 @@ export default function IngresosPage() {
           })
           if(res.ok) {
               toast.success("Caja cerrada")
+              addNotification("Caja Cerrada", "El turno ha finalizado.", "warning")
+              
+              // --- CLAVE: AVISAR AL CONTEXTO GLOBAL QUE LA CAJA SE CERRÓ ---
+              await refreshCajaStatus()
+
               fetchData()
           }
       } catch(e) { toast.error("Error cerrando caja") }
@@ -153,10 +159,9 @@ export default function IngresosPage() {
                     {new Date().toLocaleDateString("es-CL", { weekday: 'long', day: 'numeric', month: 'long' })}
                 </div>
                 
-                {/* BOTÓN HISTORIAL COMPLETO */}
                 <Dialog open={isHistorialOpen} onOpenChange={(open) => {
                     setIsHistorialOpen(open)
-                    if(open) fetchHistorialCompleto() // Cargar datos solo al abrir
+                    if(open) fetchHistorialCompleto() 
                 }}>
                     <DialogTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -313,7 +318,7 @@ export default function IngresosPage() {
             </Card>
         </div>
 
-        {/* 3. TABLA DE HISTORIAL DEL DÍA (SE LIMPIA AUTOMÁTICAMENTE MAÑANA) */}
+        {/* 3. TABLA DE HISTORIAL DEL DÍA */}
         <Card className="border-t-4 border-t-slate-100 dark:border-t-slate-800">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">

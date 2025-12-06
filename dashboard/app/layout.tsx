@@ -1,19 +1,14 @@
-import type React from "react"
 import type { Metadata } from "next"
-import { JetBrains_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
-import { ThemeProvider } from "@/components/theme-provider"
+import { Inter } from "next/font/google"
 import "./globals.css"
+import { ThemeProvider } from "@/components/theme-provider"
+import { AppProvider } from "@/context/app-context" // <--- IMPORTAR ESTO
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
+const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Panely",
-  description: "panaderia",
-    generator: 'v0.app'
+  title: "Panely Dashboard",
+  description: "Gestión inteligente para panaderías",
 }
 
 export default function RootLayout({
@@ -22,12 +17,19 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${jetbrainsMono.variable} font-mono antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
+    <html lang="es" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {/* ENVOLVEMOS CON EL PROVIDER */}
+          <AppProvider>
+             {children}
+          </AppProvider>
         </ThemeProvider>
-        <Analytics />
       </body>
     </html>
   )

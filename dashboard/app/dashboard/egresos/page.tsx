@@ -1,246 +1,254 @@
 "use client"
 
-import { useState } from "react"
-import { DollarSign, Calendar, Trash2, Plus, Save, ShoppingCart } from "lucide-react"
+import { useState, useEffect } from "react"
+import { TrendingDown, FileText, ArrowDownCircle, ShoppingCart, Loader2, Plus, Save } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // Importamos Select
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { useToast } from "@/components/ui/use-toast"
+import { useApp } from "@/context/app-context"
 
-interface Egreso {
-  id: string
-  concepto: string
-  monto: string
-  descripcion: string
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function EgresosPage() {
-  const [egresos, setEgresos] = useState<Egreso[]>([])
-  const [concepto, setConcepto] = useState("")
-  const [monto, setMonto] = useState("")
-  const [descripcion, setDescripcion] = useState("")
-  const [fecha] = useState(new Date().toISOString().split("T")[0])
-  const [fechaDisplay] = useState(
-    new Date().toLocaleDateString("es-ES", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
-  )
+  const { toast } = useToast()
+  const { addNotification } = useApp()
 
-  const formatearNumero = (valor: string) => {
-    if (!valor) return "0.00"
-    const numero = Number.parseFloat(valor)
-    return numero.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  }
+  const [egresos, setEgresos] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  
+  // Estados para nuevo gasto
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  
+  // Ahora incluimos la categoría por defecto
+  const [nuevoGasto, setNuevoGasto] = useState({ 
+      monto: "", 
+      descripcion: "", 
+      categoria: "GASTO_GENERAL" 
+  })
 
-  const calcularTotalEgresos = () => {
-    return egresos.reduce((total, egreso) => total + (Number.parseFloat(egreso.monto) || 0), 0)
-  }
+  const fetchData = async () => {
+    const token = localStorage.getItem("accessToken")
+    if (!token) return
 
-  const agregarEgreso = () => {
-    if (concepto && monto) {
-      const nuevoEgreso: Egreso = {
-        id: Date.now().toString(),
-        concepto,
-        monto,
-        descripcion,
+    try {
+      const res = await fetch(`${API_URL}/finanzas/egresos`, {
+          headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+          setEgresos(await res.json())
       }
-      setEgresos([...egresos, nuevoEgreso])
-      setConcepto("")
-      setMonto("")
-      setDescripcion("")
+    } catch (error) {
+      console.error("Error cargando egresos", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const eliminarEgreso = (id: string) => {
-    setEgresos(egresos.filter((e) => e.id !== id))
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const handleRegistrarGasto = async () => {
+    if (!nuevoGasto.monto || !nuevoGasto.descripcion) {
+        toast({ title: "Error", description: "Completa los campos", variant: "destructive" })
+        return
+    }
+
+    setIsSaving(true)
+    const token = localStorage.getItem("accessToken")
+    try {
+        const res = await fetch(`${API_URL}/finanzas/egreso`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(nuevoGasto)
+        })
+
+        if (res.ok) {
+            toast({ title: "Gasto Registrado", description: "Se ha descontado de la caja." })
+            addNotification("Nuevo Gasto", `${nuevoGasto.descripcion}: -$${nuevoGasto.monto}`, "warning")
+            
+            setNuevoGasto({ monto: "", descripcion: "", categoria: "GASTO_GENERAL" })
+            setIsDialogOpen(false)
+            fetchData() 
+        } else {
+            const err = await res.json()
+            toast({ title: "Error", description: err.error || "No se pudo guardar", variant: "destructive" })
+        }
+    } catch (e) {
+        toast({ title: "Error", description: "Fallo de conexión", variant: "destructive" })
+    } finally {
+        setIsSaving(false)
+    }
   }
 
-  const guardarEgresos = () => {
-    console.log("[v0] Guardando egresos:", {
-      fecha,
-      fechaHora: new Date().toISOString(),
-      egresos: egresos.map((e) => ({
-        concepto: e.concepto,
-        monto: Number.parseFloat(e.monto),
-        descripcion: e.descripcion,
-      })),
-      totalEgresos: calcularTotalEgresos(),
-    })
+  const totalEgresos = egresos.reduce((sum, e) => sum + e.monto, 0)
 
-    // Resetear formulario
-    setEgresos([])
-    setConcepto("")
-    setMonto("")
-    setDescripcion("")
+  // Función auxiliar para formatear el nombre de la categoría en la tabla
+  const getCategoriaLabel = (cat: string) => {
+      switch(cat) {
+          case 'COMPRA_INSUMO': return 'Compra Insumo';
+          case 'SERVICIOS': return 'Servicios (Luz/Agua)';
+          case 'MANTENIMIENTO': return 'Mantenimiento';
+          case 'TRANSPORTE': return 'Transporte/Flete';
+          case 'SUELDOS': return 'Pago Personal';
+          default: return 'Gasto General';
+      }
   }
+  
+  // Función para el color del badge según categoría
+  const getCategoriaBadgeColor = (cat: string) => {
+      if (cat === 'COMPRA_INSUMO') return 'bg-blue-50 text-blue-700 border-blue-200';
+      if (cat === 'SERVICIOS') return 'bg-orange-50 text-orange-700 border-orange-200';
+      if (cat === 'SUELDOS') return 'bg-purple-50 text-purple-700 border-purple-200';
+      return 'bg-red-50 text-red-700 border-red-200';
+  }
+
+  if (isLoading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin" /></div>
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-md">
-            <Calendar className="w-4 h-4" />
-            {fechaDisplay}
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Registro de Egresos</h1>
-          <p className="text-lg text-muted-foreground">Administra los gastos diarios de tu panadería</p>
+    <div className="space-y-6 p-6 max-w-7xl mx-auto">
+      
+      {/* HEADER Y BOTÓN DE ACCIÓN */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+           <h1 className="text-3xl font-bold flex items-center gap-2">
+            <TrendingDown className="h-8 w-8 text-red-500" />
+            Control de Egresos
+          </h1>
+          <p className="text-muted-foreground">Historial de compras de insumos y gastos operativos.</p>
         </div>
-
-        {/* Formulario de Nuevo Egreso */}
-        <Card className="border-2 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <Plus className="w-6 h-6 text-orange-600" />
-              Nuevo Egreso
-            </CardTitle>
-            <CardDescription>Registra un gasto o egreso del día</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="concepto" className="text-base font-semibold">
-                    Concepto
-                  </Label>
-                  <Input
-                    id="concepto"
-                    placeholder="ej. Compra de harina"
-                    value={concepto}
-                    onChange={(e) => setConcepto(e.target.value)}
-                    className="h-12 text-lg"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="monto" className="text-base font-semibold">
-                    Monto
-                  </Label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-600" />
-                    <Input
-                      id="monto"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={monto}
-                      onChange={(e) => setMonto(e.target.value)}
-                      className="pl-10 h-12 text-lg font-semibold"
-                    />
-                  </div>
-                  {monto && <p className="text-sm text-muted-foreground font-medium">${formatearNumero(monto)}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="descripcion" className="text-base font-semibold">
-                  Descripción (opcional)
-                </Label>
-                <Textarea
-                  id="descripcion"
-                  placeholder="Detalles adicionales del egreso..."
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  className="resize-none"
-                  rows={3}
-                />
-              </div>
-
-              <Button
-                onClick={agregarEgreso}
-                disabled={!concepto || !monto}
-                className="w-full h-12 text-lg bg-orange-600 hover:bg-orange-700 text-white"
-                size="lg"
-              >
-                <Plus className="mr-2 w-5 h-5" />
-                Agregar Egreso
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Lista de Egresos */}
-        {egresos.length > 0 && (
-          <Card className="border-2 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-2xl">
-                <ShoppingCart className="w-6 h-6" />
-                Egresos del Día
-              </CardTitle>
-              <CardDescription>
-                {egresos.length} egreso{egresos.length !== 1 ? "s" : ""} registrado{egresos.length !== 1 ? "s" : ""}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {egresos.map((egreso) => (
-                  <Card key={egreso.id} className="border">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-1">
-                          <p className="font-semibold text-lg">{egreso.concepto}</p>
-                          {egreso.descripcion && <p className="text-sm text-muted-foreground">{egreso.descripcion}</p>}
-                          <p className="text-2xl font-bold text-red-600">${formatearNumero(egreso.monto)}</p>
-                        </div>
-                        <Button
-                          onClick={() => eliminarEgreso(egreso.id)}
-                          variant="destructive"
-                          size="icon"
-                          className="shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-
-                {/* Total de Egresos */}
-                <Card className="bg-gradient-to-r from-red-600 to-rose-600 text-white border-0 shadow-xl">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <DollarSign className="w-8 h-8" />
-                        <div>
-                          <p className="text-sm opacity-90 font-medium">Total Egresos</p>
-                          <p className="text-4xl font-bold tracking-tight">
-                            ${formatearNumero(calcularTotalEgresos().toString())}
-                          </p>
-                        </div>
-                      </div>
+        
+        <div className="flex gap-4 items-center w-full md:w-auto">
+             {/* TARJETA DE TOTAL */}
+            <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900 shadow-sm flex-1 md:flex-none">
+                <CardContent className="p-3 px-6 flex items-center gap-4">
+                    <div className="text-right">
+                        <p className="text-[10px] font-bold text-red-800 dark:text-red-300 uppercase tracking-wider">Total Gastos</p>
+                        <p className="text-xl font-black text-red-700 dark:text-red-400">${totalEgresos.toLocaleString("es-CL")}</p>
                     </div>
-                  </CardContent>
-                </Card>
+                </CardContent>
+            </Card>
 
-                {/* Botón Guardar */}
-                <Button
-                  onClick={guardarEgresos}
-                  className="w-full h-12 text-lg bg-green-600 hover:bg-green-700 text-white shadow-lg"
-                  size="lg"
-                >
-                  <Save className="mr-2 w-5 h-5" />
-                  Guardar Egresos del Día
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            {/* BOTÓN REGISTRAR GASTO MANUAL */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button className="bg-red-600 hover:bg-red-700 h-14 px-6 text-lg shadow-md gap-2">
+                        <Plus className="h-5 w-5" /> Registrar Gasto
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Registrar Gasto Manual</DialogTitle>
+                        <DialogDescription>Gastos hormiga, servicios o emergencias (Descuenta de Caja).</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Categoría</Label>
+                            <Select 
+                                value={nuevoGasto.categoria} 
+                                onValueChange={(v) => setNuevoGasto({...nuevoGasto, categoria: v})}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecciona..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="GASTO_GENERAL">Gasto General / Hormiga</SelectItem>
+                                    <SelectItem value="SERVICIOS">Servicios (Luz, Agua, Gas)</SelectItem>
+                                    <SelectItem value="MANTENIMIENTO">Mantenimiento / Reparaciones</SelectItem>
+                                    <SelectItem value="TRANSPORTE">Transporte / Fletes</SelectItem>
+                                    <SelectItem value="SUELDOS">Pago Personal / Anticipos</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-        {/* Mensaje cuando no hay egresos */}
-        {egresos.length === 0 && (
-          <Card className="border-2 border-dashed">
-            <CardContent className="py-12 text-center">
-              <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground opacity-50 mb-4" />
-              <p className="text-lg text-muted-foreground">No hay egresos registrados para el día de hoy</p>
-              <p className="text-sm text-muted-foreground mt-2">Agrega un egreso usando el formulario de arriba</p>
-            </CardContent>
-          </Card>
-        )}
+                        <div className="space-y-2">
+                            <Label>Monto ($)</Label>
+                            <Input 
+                                type="number" 
+                                placeholder="0" 
+                                value={nuevoGasto.monto}
+                                onChange={(e) => setNuevoGasto({...nuevoGasto, monto: e.target.value})}
+                                className="text-lg font-bold"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Descripción</Label>
+                            <Input 
+                                placeholder="Ej: Pago flete, Compra bolsas, Gas..." 
+                                value={nuevoGasto.descripcion}
+                                onChange={(e) => setNuevoGasto({...nuevoGasto, descripcion: e.target.value})}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                        <Button className="bg-red-600 hover:bg-red-700" onClick={handleRegistrarGasto} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                            Confirmar Egreso
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
       </div>
+
+      <Card className="border-t-4 border-t-red-500">
+        <CardHeader>
+            <CardTitle>Historial de Movimientos</CardTitle>
+            <CardDescription>Listado automático de compras y gastos manuales.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div className="rounded-md border overflow-hidden">
+                <Table>
+                    <TableHeader className="bg-muted/50">
+                        <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead>Categoría</TableHead>
+                            <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {egresos.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center py-16 text-muted-foreground">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <ShoppingCart className="h-10 w-10 opacity-20" />
+                                        <p>No hay egresos registrados aún.</p>
+                                        <p className="text-xs">Las compras de insumos aparecerán aquí automáticamente.</p>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            egresos.map((egreso) => (
+                                <TableRow key={egreso.id} className="hover:bg-red-50/30 transition-colors">
+                                    <TableCell className="font-mono text-xs text-muted-foreground">
+                                        {new Date(egreso.fecha).toLocaleDateString()} {new Date(egreso.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </TableCell>
+                                    <TableCell className="font-medium">{egreso.descripcion}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={`font-normal ${getCategoriaBadgeColor(egreso.categoria)}`}>
+                                            {getCategoriaLabel(egreso.categoria)}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-red-600">
+                                        -${egreso.monto.toLocaleString("es-CL")}
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
