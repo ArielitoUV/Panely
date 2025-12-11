@@ -1,22 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { TrendingDown, FileText, ArrowDownCircle, ShoppingCart, Loader2, Plus, Save } from "lucide-react"
+import { TrendingDown, ShoppingCart, Loader2, Plus, Save } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // Importamos Select
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner" // <--- CAMBIO: Usamos Sonner para que la alerta sea igual a Ingresos
 import { useApp } from "@/context/app-context"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function EgresosPage() {
-  const { toast } = useToast()
   const { addNotification } = useApp()
 
   const [egresos, setEgresos] = useState<any[]>([])
@@ -26,7 +25,6 @@ export default function EgresosPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
-  // Ahora incluimos la categoría por defecto
   const [nuevoGasto, setNuevoGasto] = useState({ 
       monto: "", 
       descripcion: "", 
@@ -55,9 +53,49 @@ export default function EgresosPage() {
     fetchData()
   }, [])
 
+  // --- FUNCIONES DE VALIDACIÓN CON ALERTAS (Idéntico a Ingresos) ---
+
+  const handleMontoChange = (valor: string) => {
+    // 1. Alerta si ingresa letras
+    if (/\D/.test(valor)) {
+        toast.warning("Solo se permiten números", { duration: 2000 })
+    }
+
+    // 2. Limpiar
+    const soloNumeros = valor.replace(/\D/g, "")
+
+    // 3. Alerta si excede longitud
+    if (soloNumeros.length > 10) {
+        toast.warning("Máximo 10 dígitos permitidos", { duration: 2000 })
+        setNuevoGasto({ ...nuevoGasto, monto: soloNumeros.slice(0, 10) })
+    } else {
+        setNuevoGasto({ ...nuevoGasto, monto: soloNumeros })
+    }
+  }
+
+  const handleDescripcionChange = (valor: string) => {
+    const regexValido = /^[a-zA-Z0-9\s]*$/
+
+    // 1. Alerta caracteres especiales
+    if (!regexValido.test(valor)) {
+        toast.warning("No uses caracteres especiales", { duration: 2000 })
+    }
+
+    const sinCaracteresEspeciales = valor.replace(/[^a-zA-Z0-9\s]/g, "")
+
+    // 2. Alerta longitud
+    if (sinCaracteresEspeciales.length > 25) {
+        toast.warning("Descripción muy larga (Máx 25)", { duration: 2000 })
+        setNuevoGasto({ ...nuevoGasto, descripcion: sinCaracteresEspeciales.slice(0, 25) })
+    } else {
+        setNuevoGasto({ ...nuevoGasto, descripcion: sinCaracteresEspeciales })
+    }
+  }
+  // -----------------------------------------------
+
   const handleRegistrarGasto = async () => {
     if (!nuevoGasto.monto || !nuevoGasto.descripcion) {
-        toast({ title: "Error", description: "Completa los campos", variant: "destructive" })
+        toast.error("Por favor completa los campos obligatorios")
         return
     }
 
@@ -71,7 +109,8 @@ export default function EgresosPage() {
         })
 
         if (res.ok) {
-            toast({ title: "Gasto Registrado", description: "Se ha descontado de la caja." })
+            // Alerta visual idéntica a Ingresos
+            toast.success("Gasto registrado exitosamente")
             addNotification("Nuevo Gasto", `${nuevoGasto.descripcion}: -$${nuevoGasto.monto}`, "warning")
             
             setNuevoGasto({ monto: "", descripcion: "", categoria: "GASTO_GENERAL" })
@@ -79,10 +118,10 @@ export default function EgresosPage() {
             fetchData() 
         } else {
             const err = await res.json()
-            toast({ title: "Error", description: err.error || "No se pudo guardar", variant: "destructive" })
+            toast.error(err.error || "No se pudo guardar el gasto")
         }
     } catch (e) {
-        toast({ title: "Error", description: "Fallo de conexión", variant: "destructive" })
+        toast.error("Error de conexión al guardar")
     } finally {
         setIsSaving(false)
     }
@@ -90,7 +129,6 @@ export default function EgresosPage() {
 
   const totalEgresos = egresos.reduce((sum, e) => sum + e.monto, 0)
 
-  // Función auxiliar para formatear el nombre de la categoría en la tabla
   const getCategoriaLabel = (cat: string) => {
       switch(cat) {
           case 'COMPRA_INSUMO': return 'Compra Insumo';
@@ -102,7 +140,6 @@ export default function EgresosPage() {
       }
   }
   
-  // Función para el color del badge según categoría
   const getCategoriaBadgeColor = (cat: string) => {
       if (cat === 'COMPRA_INSUMO') return 'bg-blue-50 text-blue-700 border-blue-200';
       if (cat === 'SERVICIOS') return 'bg-orange-50 text-orange-700 border-orange-200';
@@ -171,10 +208,11 @@ export default function EgresosPage() {
                         <div className="space-y-2">
                             <Label>Monto ($)</Label>
                             <Input 
-                                type="number" 
+                                type="text" 
+                                inputMode="numeric"
                                 placeholder="0" 
                                 value={nuevoGasto.monto}
-                                onChange={(e) => setNuevoGasto({...nuevoGasto, monto: e.target.value})}
+                                onChange={(e) => handleMontoChange(e.target.value)}
                                 className="text-lg font-bold"
                             />
                         </div>
@@ -183,7 +221,7 @@ export default function EgresosPage() {
                             <Input 
                                 placeholder="Ej: Pago flete, Compra bolsas, Gas..." 
                                 value={nuevoGasto.descripcion}
-                                onChange={(e) => setNuevoGasto({...nuevoGasto, descripcion: e.target.value})}
+                                onChange={(e) => handleDescripcionChange(e.target.value)}
                             />
                         </div>
                     </div>

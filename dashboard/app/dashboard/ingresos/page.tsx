@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { DollarSign, Lock, Unlock, Calendar, TrendingUp, Save, Loader2, PlusCircle, History, FileText } from "lucide-react"
+import { Lock, Unlock, Calendar, Save, Loader2, PlusCircle, History, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,13 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { toast } from "sonner"
-import { useApp } from "@/context/app-context" // <--- IMPORTAMOS EL CONTEXTO
+import { toast } from "sonner" // Usamos Sonner para las alertas
+import { useApp } from "@/context/app-context" 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function IngresosPage() {
-  const { refreshCajaStatus, addNotification } = useApp() // <--- USAMOS LA FUNCIÓN DEL CONTEXTO
+  const { refreshCajaStatus, addNotification } = useApp() 
   
   const [caja, setCaja] = useState<any>(null)
   const [movimientos, setMovimientos] = useState<any[]>([]) 
@@ -71,6 +71,50 @@ export default function IngresosPage() {
 
   const formatearNumero = (valor: number | string) => Number(valor).toLocaleString("es-CL")
 
+  // --- FUNCIONES DE VALIDACIÓN CON ALERTAS ---
+
+  const handleMontoChange = (valor: string, setter: (val: string) => void) => {
+    // 1. Verificar si el usuario intentó ingresar algo que NO es número
+    if (/\D/.test(valor)) {
+        toast.warning("Solo se permiten números", { duration: 2000 })
+    }
+
+    // 2. Limpiar caracteres no numéricos
+    const soloNumeros = valor.replace(/\D/g, "")
+
+    // 3. Verificar longitud máxima (10)
+    if (soloNumeros.length > 10) {
+        toast.warning("Máximo 10 dígitos permitidos", { duration: 2000 })
+        // Cortamos el valor para que no exceda
+        setter(soloNumeros.slice(0, 10))
+    } else {
+        setter(soloNumeros)
+    }
+  }
+
+  const handleDescripcionChange = (valor: string) => {
+    // Regex: Permite letras (a-z), números (0-9) y espacios. Bloquea símbolos.
+    const regexValido = /^[a-zA-Z0-9\s]*$/
+
+    // 1. Verificar caracteres especiales
+    if (!regexValido.test(valor)) {
+        toast.warning("No uses caracteres especiales", { duration: 2000 })
+    }
+
+    // 2. Limpiar caracteres inválidos
+    const sinCaracteresEspeciales = valor.replace(/[^a-zA-Z0-9\s]/g, "")
+
+    // 3. Verificar longitud máxima (25)
+    if (sinCaracteresEspeciales.length > 25) {
+        toast.warning("Descripción muy larga (Máx 25)", { duration: 2000 })
+        setNuevoIngreso({ ...nuevoIngreso, descripcion: sinCaracteresEspeciales.slice(0, 25) })
+    } else {
+        setNuevoIngreso({ ...nuevoIngreso, descripcion: sinCaracteresEspeciales })
+    }
+  }
+
+  // -----------------------------------------------
+
   const handleAbrirCaja = async () => {
     if (!montoInicial) return toast.error("Ingresa un monto inicial")
     setIsSaving(true)
@@ -81,13 +125,10 @@ export default function IngresosPage() {
             body: JSON.stringify({ montoInicial: parseInt(montoInicial) })
         })
         if(res.ok) {
-            toast.success("¡Caja abierta!")
+            toast.success("¡Caja abierta exitosamente!")
             addNotification("Caja Abierta", `Se inició el turno con $${montoInicial}`, "success")
-            
-            // --- CLAVE: AVISAR AL CONTEXTO GLOBAL QUE LA CAJA SE ABRIÓ ---
             await refreshCajaStatus() 
-            
-            fetchData() // Recargar datos locales de la página
+            fetchData() 
         } else {
             const err = await res.json()
             toast.error(err.error || "Error al abrir")
@@ -97,7 +138,7 @@ export default function IngresosPage() {
   }
 
   const handleRegistrarIngreso = async () => {
-      if (!nuevoIngreso.monto || !nuevoIngreso.descripcion) return toast.error("Faltan datos")
+      if (!nuevoIngreso.monto || !nuevoIngreso.descripcion) return toast.error("Faltan datos por completar")
       setIsSaving(true)
       try {
           const res = await fetch(`${API_URL}/finanzas/ingreso`, {
@@ -106,19 +147,21 @@ export default function IngresosPage() {
               body: JSON.stringify(nuevoIngreso)
           })
           if(res.ok) {
-              toast.success("Ingreso registrado")
+              toast.success("Ingreso registrado correctamente")
               addNotification("Nuevo Ingreso", `${nuevoIngreso.descripcion} - $${nuevoIngreso.monto}`, "info")
               setNuevoIngreso({ monto: "", descripcion: "", metodo: "EFECTIVO" })
               fetchData()
           } else {
-              toast.error("No se pudo registrar")
+              toast.error("No se pudo registrar el ingreso")
           }
       } catch(e) { toast.error("Error de conexión") }
       finally { setIsSaving(false) }
   }
 
   const handleCerrarCaja = async () => {
-      if(!confirm("¿Confirmas el cierre de caja?")) return;
+      // Usamos un toast promise o confirmación simple del navegador
+      if(!confirm("¿Estás seguro de cerrar la caja?")) return;
+      
       setIsSaving(true)
       try {
           const res = await fetch(`${API_URL}/caja/cerrar`, {
@@ -126,12 +169,9 @@ export default function IngresosPage() {
               headers: { Authorization: `Bearer ${token!}` }
           })
           if(res.ok) {
-              toast.success("Caja cerrada")
+              toast.success("Caja cerrada. Jornada finalizada.")
               addNotification("Caja Cerrada", "El turno ha finalizado.", "warning")
-              
-              // --- CLAVE: AVISAR AL CONTEXTO GLOBAL QUE LA CAJA SE CERRÓ ---
               await refreshCajaStatus()
-
               fetchData()
           }
       } catch(e) { toast.error("Error cerrando caja") }
@@ -220,7 +260,14 @@ export default function IngresosPage() {
                                 <Label>Monto Inicial</Label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                                    <Input type="number" placeholder="0" className="pl-7 text-lg font-bold" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} />
+                                    <Input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        placeholder="0" 
+                                        className="pl-7 text-lg font-bold" 
+                                        value={montoInicial} 
+                                        onChange={(e) => handleMontoChange(e.target.value, setMontoInicial)} 
+                                    />
                                 </div>
                             </div>
                             <Button onClick={handleAbrirCaja} disabled={isSaving} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold">
@@ -273,10 +320,12 @@ export default function IngresosPage() {
                             <div className="relative">
                                 <span className="absolute left-4 top-2 text-xl text-muted-foreground">$</span>
                                 <Input 
-                                    type="number" placeholder="0" 
+                                    type="text" 
+                                    inputMode="numeric"
+                                    placeholder="0" 
                                     className="pl-8 text-2xl font-bold h-12 text-blue-600"
                                     value={nuevoIngreso.monto}
-                                    onChange={(e) => setNuevoIngreso({...nuevoIngreso, monto: e.target.value})}
+                                    onChange={(e) => handleMontoChange(e.target.value, (val) => setNuevoIngreso({...nuevoIngreso, monto: val}))}
                                     disabled={!cajaAbierta}
                                     onKeyDown={(e) => e.key === 'Enter' && handleRegistrarIngreso()}
                                 />
@@ -302,7 +351,7 @@ export default function IngresosPage() {
                             <Input 
                                 placeholder="Ej: Venta 1kg Hallulla" 
                                 value={nuevoIngreso.descripcion}
-                                onChange={(e) => setNuevoIngreso({...nuevoIngreso, descripcion: e.target.value})}
+                                onChange={(e) => handleDescripcionChange(e.target.value)}
                                 disabled={!cajaAbierta}
                                 className="h-12 text-lg"
                                 onKeyDown={(e) => e.key === 'Enter' && handleRegistrarIngreso()}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Search, Trash2, Package, Edit, Save, AlertTriangle, AlertCircle } from "lucide-react"
+import { Plus, Search, Trash2, Edit, AlertTriangle, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,17 +9,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner" // Usamos Sonner
 import { Badge } from "@/components/ui/badge"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
+// --- CONFIGURACIÓN ESTRICTA DE INSUMOS Y SUS PRESENTACIONES ---
+const INSUMOS_CONFIG: Record<string, string[]> = {
+    "Azúcar": ["Bolsa individual", "Saco", "Tarro"],
+    "Harina": ["Bolsa Individual", "Saco"],
+    "Levadura": ["Paquete", "Individual"],
+    "Manteca": ["Bolsa Individual", "Tarro"],
+    "Mejorador": ["Bolsa Individual", "Paquete"],
+    "Sal": ["Bolsa Individual", "Saco"]
+}
+
 export default function InventarioPage() {
-  const { toast } = useToast()
   
   const [insumos, setInsumos] = useState<any[]>([])
-  const [tiposInsumo, setTiposInsumo] = useState<any[]>([]) 
-  const [tiposPresentacion, setTiposPresentacion] = useState<any[]>([]) 
   
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -34,27 +41,63 @@ export default function InventarioPage() {
     valorCompra: "",
   })
 
+  // Solo cargamos la lista de insumos guardados, los tipos ya los tenemos en duro
   const fetchData = async () => {
     try {
         const token = localStorage.getItem("accessToken")
         const headers = { Authorization: `Bearer ${token}` }
         
-        const [resInsumos, resTipos, resPresentaciones] = await Promise.all([
-            fetch(`${API_URL}/insumos`, { headers }),
-            fetch(`${API_URL}/insumos/tipos`, { headers }),
-            fetch(`${API_URL}/insumos/presentaciones`, { headers })
-        ])
-
+        const resInsumos = await fetch(`${API_URL}/insumos`, { headers })
         if (resInsumos.ok) setInsumos(await resInsumos.json())
-        if (resTipos.ok) setTiposInsumo(await resTipos.json())
-        if (resPresentaciones.ok) setTiposPresentacion(await resPresentaciones.json())
 
     } catch (error) {
         console.error("Error cargando datos", error)
+        toast.error("Error de conexión al cargar el inventario")
     }
   }
 
   useEffect(() => { fetchData() }, [])
+
+  // --- VALIDACIONES PROFESIONALES (FRONTEND) ---
+
+  const handleCantidadChange = (valor: string) => {
+      // 1. Alerta si ingresa letras
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+
+      // 2. Alerta y bloqueo si pasa de 5 dígitos
+      if (soloNumeros.length > 5) {
+          toast.warning("Máximo 5 dígitos permitidos por ahora", { duration: 2000 })
+          setFormData({ ...formData, cantidadCompra: soloNumeros.slice(0, 5) })
+      } else {
+          setFormData({ ...formData, cantidadCompra: soloNumeros })
+      }
+  }
+
+  const handleValorChange = (valor: string) => {
+      // 1. Alerta si ingresa letras
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+
+      // 2. Alerta y bloqueo si pasa de 10 dígitos (NUEVO)
+      if (soloNumeros.length > 10) {
+          toast.warning("El precio no puede exceder los 10 dígitos", { duration: 2000 })
+          setFormData({ ...formData, valorCompra: soloNumeros.slice(0, 10) })
+      } else {
+          setFormData({ ...formData, valorCompra: soloNumeros })
+      }
+  }
+
+  const handleNombreChange = (nuevoNombre: string) => {
+      // Al cambiar el nombre, reseteamos la presentación para evitar inconsistencias
+      setFormData({ ...formData, nombre: nuevoNombre, presentacion: "" })
+  }
+
+  // ----------------------------------
 
   const handleEdit = (insumo: any) => {
       setEditingId(insumo.id)
@@ -77,8 +120,9 @@ export default function InventarioPage() {
   }
 
   const handleSave = async () => {
-    if (!formData.nombre || !formData.cantidadCompra || !formData.valorCompra) {
-        toast({ title: "Error", description: "Completa los campos obligatorios", variant: "destructive" })
+    // Validaciones finales antes de enviar
+    if (!formData.nombre || !formData.presentacion || !formData.cantidadCompra || !formData.valorCompra) {
+        toast.error("Faltan datos obligatorios", { description: "Revisa el nombre, presentación, cantidad y valor." })
         return
     }
 
@@ -95,14 +139,15 @@ export default function InventarioPage() {
         })
 
         if (res.ok) {
-            toast({ title: "Éxito", description: editingId ? "Insumo actualizado" : "Stock ingresado correctamente" })
+            toast.success(editingId ? "Insumo actualizado correctamente" : "Stock ingresado exitosamente")
             handleOpenChange(false)
             fetchData() 
         } else {
-            toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" })
+            const err = await res.json()
+            toast.error("No se pudo guardar", { description: err.error || "Error desconocido" })
         }
     } catch (error) {
-        console.error(error)
+        toast.error("Error de conexión")
     } finally {
         setIsLoading(false)
     }
@@ -112,13 +157,18 @@ export default function InventarioPage() {
     if(!confirm("¿Estás seguro de borrar este insumo?")) return;
     try {
         const token = localStorage.getItem("accessToken")
-        await fetch(`${API_URL}/insumos/${id}`, {
+        const res = await fetch(`${API_URL}/insumos/${id}`, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${token}` }
         })
-        fetchData()
-        toast({ title: "Eliminado", description: "Registro borrado" })
-    } catch (error) { console.error(error) }
+        
+        if (res.ok) {
+            toast.success("Insumo eliminado del inventario")
+            fetchData()
+        } else {
+            toast.error("No se pudo eliminar")
+        }
+    } catch (error) { toast.error("Error de conexión") }
   }
 
   const getStockStatus = (insumo: any) => {
@@ -155,6 +205,9 @@ export default function InventarioPage() {
     i.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  // Opciones para el select de presentación (Depende del insumo seleccionado)
+  const presentacionesDisponibles = formData.nombre ? INSUMOS_CONFIG[formData.nombre] || [] : []
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -165,47 +218,82 @@ export default function InventarioPage() {
         
         <Dialog open={isAddOpen} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
-            <Button className="bg-orange-600 hover:bg-orange-700">
+            <Button className="bg-orange-600 hover:bg-orange-700 shadow-md">
               <Plus className="mr-2 h-4 w-4" /> Registrar Compra
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{editingId ? "Modificar Insumo" : "Nuevo Ingreso de Stock"}</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-5 py-4">
               
+              {/* SELECTOR DE NOMBRE (Insumo) */}
               <div className="space-y-2">
                 <Label>Nombre del Insumo</Label>
-                <Select value={formData.nombre} onValueChange={(val) => setFormData({...formData, nombre: val})}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona..." /></SelectTrigger>
+                <Select value={formData.nombre} onValueChange={handleNombreChange}>
+                    <SelectTrigger className="text-lg font-medium">
+                        <SelectValue placeholder="Selecciona insumo..." />
+                    </SelectTrigger>
                     <SelectContent>
-                      {tiposInsumo.map((t:any) => <SelectItem key={t.id} value={t.nombre}>{t.nombre}</SelectItem>)}
+                      {/* Generamos la lista basada en las llaves del objeto de configuración */}
+                      {Object.keys(INSUMOS_CONFIG).map((nombre) => (
+                          <SelectItem key={nombre} value={nombre}>{nombre}</SelectItem>
+                      ))}
                     </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                {/* SELECTOR DE PRESENTACIÓN (Dependiente) */}
                 <div className="space-y-2">
                   <Label>Presentación</Label>
-                  <Select value={formData.presentacion} onValueChange={(val) => setFormData({...formData, presentacion: val})}>
-                      <SelectTrigger><SelectValue placeholder="Tipo..." /></SelectTrigger>
+                  <Select 
+                    value={formData.presentacion} 
+                    onValueChange={(val) => setFormData({...formData, presentacion: val})}
+                    disabled={!formData.nombre} // Deshabilitado si no hay insumo seleccionado
+                  >
+                      <SelectTrigger>
+                          <SelectValue placeholder={!formData.nombre ? "-" : "Selecciona..."} />
+                      </SelectTrigger>
                       <SelectContent>
-                        {tiposPresentacion.map((t:any) => <SelectItem key={t.id} value={t.nombre}>{t.nombre}</SelectItem>)}
+                        {presentacionesDisponibles.map((p) => (
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
                       </SelectContent>
                   </Select>
                 </div>
+
+                {/* INPUT VALOR DE COMPRA (VALIDADO) */}
                 <div className="space-y-2">
                   <Label>Valor Compra ($)</Label>
-                  <Input type="number" placeholder="0" value={formData.valorCompra} onChange={(e) => setFormData({...formData, valorCompra: e.target.value})} />
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                    <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        placeholder="0" 
+                        value={formData.valorCompra} 
+                        onChange={(e) => handleValorChange(e.target.value)}
+                        className="pl-7"
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                {/* INPUT CANTIDAD (VALIDADO) */}
                 <div className="space-y-2">
                   <Label>Cantidad</Label>
-                  <Input type="number" placeholder="0" value={formData.cantidadCompra} onChange={(e) => setFormData({...formData, cantidadCompra: e.target.value})} />
+                  <Input 
+                    type="text" 
+                    inputMode="numeric"
+                    placeholder="0" 
+                    value={formData.cantidadCompra} 
+                    onChange={(e) => handleCantidadChange(e.target.value)} 
+                  />
                 </div>
+                {/* SELECTOR UNIDAD */}
                 <div className="space-y-2">
                   <Label>Unidad</Label>
                   <Select value={formData.unidadMedida} onValueChange={(val) => setFormData({...formData, unidadMedida: val})}>
@@ -213,13 +301,16 @@ export default function InventarioPage() {
                     <SelectContent>
                       <SelectItem value="kg">Kilos (kg)</SelectItem>
                       <SelectItem value="gr">Gramos (gr)</SelectItem>
+                      <SelectItem value="lt">Litros (lt)</SelectItem>
+                      <SelectItem value="un">Unidad (un)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+
               {formData.cantidadCompra && (
-                <div className="bg-muted p-3 rounded-md text-sm text-center">
-                   Se guardará como stock: <strong>
+                <div className="bg-orange-50 border border-orange-100 p-3 rounded-md text-sm text-center text-orange-800">
+                   Stock a ingresar: <strong>
                      {formData.unidadMedida === 'kg' || formData.unidadMedida === 'lt'
                         ? (parseFloat(formData.cantidadCompra) * 1000).toLocaleString() 
                         : parseFloat(formData.cantidadCompra).toLocaleString()} {formData.unidadMedida === 'lt' ? 'ml' : 'gramos'}
@@ -228,7 +319,7 @@ export default function InventarioPage() {
               )}
             </div>
             <DialogFooter>
-              <Button onClick={handleSave} disabled={isLoading} className="bg-orange-600">
+              <Button onClick={handleSave} disabled={isLoading} className="bg-orange-600 hover:bg-orange-700 w-full">
                 {isLoading ? "Guardando..." : (editingId ? "Actualizar Datos" : "Confirmar Ingreso")}
               </Button>
             </DialogFooter>
@@ -236,8 +327,8 @@ export default function InventarioPage() {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-2 bg-background/50 p-2 rounded-lg border w-full md:w-1/3">
-        <Search className="h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border w-full md:w-1/3 shadow-sm">
+        <Search className="h-4 w-4 text-muted-foreground ml-2" />
         <Input 
           placeholder="Buscar insumo..." 
           className="border-0 bg-transparent focus-visible:ring-0"
@@ -246,10 +337,10 @@ export default function InventarioPage() {
         />
       </div>
 
-      <Card>
+      <Card className="shadow-md border-t-4 border-t-orange-500">
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/40">
               <TableRow>
                 <TableHead>Ingrediente</TableHead>
                 <TableHead>Presentación</TableHead>
@@ -262,16 +353,16 @@ export default function InventarioPage() {
             </TableHeader>
             <TableBody>
               {filteredInsumos.map((insumo) => (
-                <TableRow key={insumo.id}>
+                <TableRow key={insumo.id} className="hover:bg-muted/20">
                   <TableCell className="font-bold text-base">{insumo.nombre}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{insumo.presentacion}</TableCell>
                   
                   <TableCell className="text-right">
                     <span className="font-medium">{insumo.cantidadCompra} {insumo.unidadMedida}</span>
-                    <div className="text-xs text-muted-foreground">(${insumo.valorCompra.toLocaleString()})</div>
+                    <div className="text-xs text-muted-foreground">(${parseInt(insumo.valorCompra).toLocaleString()})</div>
                   </TableCell>
                   
-                  <TableCell className="text-right font-mono text-sm">
+                  <TableCell className="text-right font-mono text-sm text-slate-500">
                     ${insumo.costoPorGramo.toFixed(2)}
                   </TableCell>
                   
@@ -287,13 +378,13 @@ export default function InventarioPage() {
                   </TableCell>
                   
                   <TableCell className="text-right flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)}><Edit className="h-4 w-4 text-blue-500" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(insumo)} className="hover:text-blue-600 hover:bg-blue-50"><Edit className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(insumo.id)} className="hover:text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
                   </TableCell>
                 </TableRow>
               ))}
               {filteredInsumos.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay insumos registrados.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">No hay insumos registrados en el inventario.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
