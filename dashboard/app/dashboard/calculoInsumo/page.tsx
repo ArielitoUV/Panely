@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-// Agregamos ClipboardList para el icono del historial
 import { Calculator, Save, ChefHat, Plus, Trash2, Eye, Edit, ArrowRight, X, Flame, TrendingUp, Loader2, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,11 +17,21 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner" 
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+const TIPOS_PAN = [
+    "Marraqueta",
+    "Hallulla",
+    "Pan Amasado",
+    "Copihue",
+    "Ciabatta",
+    "Coliza",
+    "Pan Integral"
+];
 
 // --- TIPOS ---
 interface Insumo {
@@ -55,21 +64,17 @@ interface Pedido {
 const porcentajes = Array.from({ length: 12 }, (_, i) => (i + 1) * 5);
 
 export default function CalculoInsumosPage() {
-  const { toast } = useToast()
   
-  // --- ESTADOS DE DATOS ---
   const [insumosDisponibles, setInsumosDisponibles] = useState<Insumo[]>([])
   const [recetas, setRecetas] = useState<Receta[]>([])
-  const [pedidos, setPedidos] = useState<Pedido[]>([]) // Estado para el historial
+  const [pedidos, setPedidos] = useState<Pedido[]>([]) 
   
-  // --- ESTADOS MODALES ---
   const [isNuevaRecetaOpen, setIsNuevaRecetaOpen] = useState(false)
   const [isListaRecetasOpen, setIsListaRecetasOpen] = useState(false)
-  const [isListaPedidosOpen, setIsListaPedidosOpen] = useState(false) // Modal de pedidos
+  const [isListaPedidosOpen, setIsListaPedidosOpen] = useState(false)
 
   const [isProcessing, setIsProcessing] = useState(false) 
 
-  // --- ESTADOS FORMULARIO RECETA ---
   const [editingId, setEditingId] = useState<number | null>(null)
   const [newReceta, setNewReceta] = useState<{nombre: string, cantidadBase: string, ingredientes: any[]}>({
     nombre: "", cantidadBase: "", ingredientes: []
@@ -77,7 +82,6 @@ export default function CalculoInsumosPage() {
   const [selectedInsumoId, setSelectedInsumoId] = useState("")
   const [selectedInsumoGramos, setSelectedInsumoGramos] = useState("")
 
-  // --- ESTADOS CALCULADORA ---
   const [nombreCliente, setNombreCliente] = useState("")
   const [cantidadSolicitada, setCantidadSolicitada] = useState("")
   const [recetaSeleccionadaId, setRecetaSeleccionadaId] = useState("")
@@ -93,7 +97,6 @@ export default function CalculoInsumosPage() {
       sugerido: number
   } | null>(null)
 
-  // --- CARGA INICIAL ---
   const fetchData = async () => {
     try {
         const token = localStorage.getItem("accessToken")
@@ -102,7 +105,7 @@ export default function CalculoInsumosPage() {
         const [resInsumos, resRecetas, resPedidos] = await Promise.all([
             fetch(`${API_URL}/insumos`, { headers }),
             fetch(`${API_URL}/recetas`, { headers }),
-            fetch(`${API_URL}/pedidos`, { headers }) // Cargamos pedidos
+            fetch(`${API_URL}/pedidos`, { headers }) 
         ])
 
         if(resInsumos.ok) setInsumosDisponibles(await resInsumos.json())
@@ -118,7 +121,81 @@ export default function CalculoInsumosPage() {
     fetchData()
   }, [])
 
-  // --- GESTIÓN DE RECETAS (CRUD) ---
+  // --- VALIDACIONES CONFIGURACIÓN PRODUCCIÓN ---
+
+  // 1. Cantidad a Producir: Solo números, máx 5 dígitos
+  const handleCantidadSolicitadaChange = (valor: string) => {
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+
+      if (soloNumeros.length > 5) {
+          toast.warning("Máximo 5 dígitos permitidos", { duration: 2000 })
+          setCantidadSolicitada(soloNumeros.slice(0, 5))
+      } else {
+          setCantidadSolicitada(soloNumeros)
+      }
+  }
+
+  // 2. Nombre Cliente: SOLO LETRAS, máx 15 caracteres
+  const handleNombreClienteChange = (valor: string) => {
+      // Alerta si hay números
+      if (/\d/.test(valor)) {
+          toast.warning("El nombre no puede contener números", { duration: 2000 })
+      }
+      
+      // Alerta si hay caracteres especiales (no letras ni espacios)
+      // Nota: \u00C0-\u017F permite acentos (á, ñ, etc.) para nombres reales en español
+      if (/[^a-zA-Z\u00C0-\u017F\s]/.test(valor)) {
+           // Solo mostramos alerta si NO es un número (para no duplicar alertas)
+           if (!/\d/.test(valor)) {
+               toast.warning("Solo se permiten letras", { duration: 2000 })
+           }
+      }
+
+      // Limpieza: Dejar solo letras (con acentos) y espacios
+      const soloLetras = valor.replace(/[^a-zA-Z\u00C0-\u017F\s]/g, "")
+
+      if (soloLetras.length > 15) {
+          toast.warning("El nombre no puede superar los 15 caracteres", { duration: 2000 })
+          setNombreCliente(soloLetras.slice(0, 15))
+      } else {
+          setNombreCliente(soloLetras)
+      }
+  }
+
+  // --- VALIDACIONES RECETA MAESTRA ---
+
+  const handleBaseChange = (valor: string) => {
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+      
+      if (soloNumeros.length > 5) {
+          toast.warning("Máximo 5 dígitos permitidos", { duration: 2000 })
+          setNewReceta({ ...newReceta, cantidadBase: soloNumeros.slice(0, 5) })
+      } else {
+          setNewReceta({ ...newReceta, cantidadBase: soloNumeros })
+      }
+  }
+
+  const handleGramosChange = (valor: string) => {
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+
+      if (soloNumeros.length > 7) {
+          toast.warning("Máximo 7 dígitos permitidos", { duration: 2000 })
+          setSelectedInsumoGramos(soloNumeros.slice(0, 7))
+      } else {
+          setSelectedInsumoGramos(soloNumeros)
+      }
+  }
+
+  // --------------------------------
 
   const agregarIngredienteAReceta = () => {
     if (!selectedInsumoId || !selectedInsumoGramos) return
@@ -155,7 +232,7 @@ export default function CalculoInsumosPage() {
 
   const guardarRecetaBD = async () => {
     if (!newReceta.nombre || !newReceta.cantidadBase || newReceta.ingredientes.length === 0) {
-      toast({ title: "Error", description: "Faltan datos en la receta", variant: "destructive" })
+      toast.error("Faltan datos en la receta")
       return
     }
 
@@ -172,14 +249,14 @@ export default function CalculoInsumosPage() {
         })
 
         if(res.ok) {
-            toast({ title: "Éxito", description: editingId ? "Receta actualizada" : "Receta creada" })
+            toast.success(editingId ? "Receta actualizada" : "Receta creada")
             setIsNuevaRecetaOpen(false)
             setNewReceta({ nombre: "", cantidadBase: "", ingredientes: [] })
             setEditingId(null)
             fetchData() 
         }
     } catch (e) {
-        toast({ title: "Error", description: "No se pudo guardar", variant: "destructive" })
+        toast.error("Error de conexión")
     } finally {
         setIsProcessing(false)
     }
@@ -193,17 +270,15 @@ export default function CalculoInsumosPage() {
         await fetch(`${API_URL}/recetas/${id}`, { 
             method: "DELETE", headers: { Authorization: `Bearer ${token}` }
         })
-        toast({ title: "Eliminada", description: "Receta borrada correctamente" })
+        toast.success("Receta eliminada")
         fetchData()
         if(recetaSeleccionadaId === id.toString()) {
             setRecetaSeleccionadaId("")
             setResultado(null)
         }
-      } catch (e) { console.error(e) }
+      } catch (e) { toast.error("Error al eliminar") }
       finally { setIsProcessing(false) }
   }
-
-  // --- CALCULADORA MATEMÁTICA ---
 
   useEffect(() => {
     if (!recetaSeleccionadaId || !cantidadSolicitada) {
@@ -257,7 +332,7 @@ export default function CalculoInsumosPage() {
 
   const guardarPedidoBD = async () => {
       if(!resultado || !nombreCliente) {
-          toast({ title: "Atención", description: "Ingresa el nombre del cliente para guardar", variant: "destructive" })
+          toast.error("Falta el nombre del cliente")
           return
       }
 
@@ -283,14 +358,17 @@ export default function CalculoInsumosPage() {
         })
 
         if (res.ok) {
-            toast({ title: "Pedido Guardado", description: "Orden registrada exitosamente" })
+            toast.success("Pedido registrado correctamente")
             setNombreCliente("")
             setCantidadSolicitada("")
             setResultado(null)
-            fetchData() // Recargar historial
+            fetchData() 
+        } else {
+            const err = await res.json()
+            toast.error(err.error || "Error al guardar")
         }
       } catch(e) {
-          toast({ title: "Error", description: "Fallo al guardar pedido", variant: "destructive" })
+          toast.error("Fallo de conexión")
       } finally {
           setIsProcessing(false)
       }
@@ -311,7 +389,7 @@ export default function CalculoInsumosPage() {
 
         <div className="flex gap-2 flex-wrap">
             
-            {/* BOTÓN VER PEDIDOS (NUEVO) */}
+            {/* BOTÓN VER PEDIDOS */}
             <Dialog open={isListaPedidosOpen} onOpenChange={setIsListaPedidosOpen}>
                 <DialogTrigger asChild>
                     <Button variant="secondary" className="gap-2 border hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -426,11 +504,29 @@ export default function CalculoInsumosPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Nombre del Pan</Label>
-                                <Input placeholder="Ej: Marraqueta" value={newReceta.nombre} onChange={(e) => setNewReceta({...newReceta, nombre: e.target.value})} />
+                                <Select 
+                                    value={newReceta.nombre} 
+                                    onValueChange={(val) => setNewReceta({...newReceta, nombre: val})}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecciona..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {TIPOS_PAN.map((pan) => (
+                                            <SelectItem key={pan} value={pan}>{pan}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Rendimiento Base</Label>
-                                <Input type="number" placeholder="Ej: 10" value={newReceta.cantidadBase} onChange={(e) => setNewReceta({...newReceta, cantidadBase: e.target.value})} />
+                                <Input 
+                                    type="text" 
+                                    inputMode="numeric"
+                                    placeholder="Ej: 10" 
+                                    value={newReceta.cantidadBase} 
+                                    onChange={(e) => handleBaseChange(e.target.value)} 
+                                />
                             </div>
                         </div>
 
@@ -448,7 +544,13 @@ export default function CalculoInsumosPage() {
                                 </div>
                                 <div className="w-24">
                                     <Label className="text-xs">Gramos</Label>
-                                    <Input type="number" value={selectedInsumoGramos} onChange={(e) => setSelectedInsumoGramos(e.target.value)} />
+                                    <Input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        placeholder="0"
+                                        value={selectedInsumoGramos} 
+                                        onChange={(e) => handleGramosChange(e.target.value)} 
+                                    />
                                 </div>
                                 <Button size="icon" onClick={agregarIngredienteAReceta} className="bg-green-600"><Plus className="h-4 w-4" /></Button>
                             </div>
@@ -501,7 +603,14 @@ export default function CalculoInsumosPage() {
                  </div>
                  <div className="space-y-2">
                     <Label>Cantidad (Unidades)</Label>
-                    <Input type="number" placeholder="Ej: 100" className="bg-background font-bold text-lg" value={cantidadSolicitada} onChange={(e) => setCantidadSolicitada(e.target.value)} />
+                    <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        placeholder="Ej: 100" 
+                        className="bg-background font-bold text-lg" 
+                        value={cantidadSolicitada} 
+                        onChange={(e) => handleCantidadSolicitadaChange(e.target.value)} 
+                    />
                  </div>
              </div>
 
@@ -532,7 +641,11 @@ export default function CalculoInsumosPage() {
 
              <div className="space-y-2 pt-4">
                 <Label>Cliente</Label>
-                <Input placeholder="Nombre del cliente" value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} />
+                <Input 
+                    placeholder="Nombre del cliente" 
+                    value={nombreCliente} 
+                    onChange={(e) => handleNombreClienteChange(e.target.value)} 
+                />
              </div>
           </CardContent>
         </Card>

@@ -5,15 +5,23 @@ export const getReporte = async (req: Request, res: Response) => {
     try {
         // @ts-ignore
         const userId = req.user?.id;
-        const { rango } = req.query; // "diario", "semanal", "mensual"
+        const { rango, mesInicio, mesFin } = req.query; // Nuevos params
 
         const hoy = new Date();
         let fechaInicio = new Date();
         let fechaFin = new Date();
 
         if (rango === 'mensual') {
-            fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-            fechaFin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59);
+            // Rango de meses (Offsets: 0 es actual, 1 anterior, etc.)
+            const startOffset = Number(mesInicio) || 0;
+            const endOffset = Number(mesFin) || 0;
+
+            // Fecha Inicio: 1er día del mes de inicio
+            fechaInicio = new Date(hoy.getFullYear(), hoy.getMonth() - startOffset, 1);
+            
+            // Fecha Fin: Último día del mes de fin
+            fechaFin = new Date(hoy.getFullYear(), hoy.getMonth() - endOffset + 1, 0, 23, 59, 59, 999);
+
         } else if (rango === 'semanal') {
             const dia = hoy.getDay(); 
             const diff = hoy.getDate() - dia + (dia === 0 ? -6 : 1); 
@@ -23,6 +31,7 @@ export const getReporte = async (req: Request, res: Response) => {
             fechaFin.setDate(fechaInicio.getDate() + 6);
             fechaFin.setHours(23,59,59,999);
         } else {
+            // Diario
             fechaInicio.setHours(0,0,0,0);
             fechaFin.setHours(23,59,59,999);
         }
@@ -48,6 +57,7 @@ export const getReporte = async (req: Request, res: Response) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: "Error generando reporte" });
     }
 };

@@ -29,6 +29,15 @@ export const createReceta = async (req: Request, res: Response) => {
     const userId = req.user?.id;
     const { nombre, cantidadBase, ingredientes } = req.body;
 
+    if (String(cantidadBase).replace(/\D/g, "").length > 5) {
+        return res.status(400).json({ error: "El rendimiento base no puede exceder los 5 dígitos." });
+    }
+    for (const ing of ingredientes) {
+        if (String(ing.cantidadGramos).replace(/\D/g, "").length > 7) {
+            return res.status(400).json({ error: "La cantidad en gramos no puede exceder los 7 dígitos." });
+        }
+    }
+
     const receta = await prisma.receta.create({
       data: {
         nombre,
@@ -54,6 +63,15 @@ export const updateReceta = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { nombre, cantidadBase, ingredientes } = req.body;
+
+        if (String(cantidadBase).replace(/\D/g, "").length > 5) {
+            return res.status(400).json({ error: "El rendimiento base no puede exceder los 5 dígitos." });
+        }
+        for (const ing of ingredientes) {
+            if (String(ing.cantidadGramos).replace(/\D/g, "").length > 7) {
+                return res.status(400).json({ error: "La cantidad en gramos no puede exceder los 7 dígitos." });
+            }
+        }
 
         const update = await prisma.$transaction([
             prisma.ingredienteReceta.deleteMany({ where: { recetaId: Number(id) } }),
@@ -89,7 +107,7 @@ export const deleteReceta = async (req: Request, res: Response) => {
     }
 }
 
-// --- NUEVO: OBTENER HISTORIAL DE PEDIDOS ---
+// --- HISTORIAL DE PEDIDOS ---
 export const getPedidos = async (req: Request, res: Response) => {
     try {
         // @ts-ignore
@@ -97,7 +115,7 @@ export const getPedidos = async (req: Request, res: Response) => {
         const pedidos = await prisma.pedido.findMany({
             where: { userId },
             orderBy: { fecha: 'desc' },
-            include: { receta: true } // Incluimos datos de la receta para ver el nombre
+            include: { receta: true } 
         });
         res.json(pedidos);
     } catch (error) {
@@ -105,49 +123,94 @@ export const getPedidos = async (req: Request, res: Response) => {
     }
 }
 
-// CREAR PEDIDO Y DESCONTAR STOCK
+// --- CREAR PEDIDO + INGRESO + CAJA + STOCK ---
 export const createPedido = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
     const userId = req.user?.id;
     const { nombreCliente, cantidadPanes, montoTotal, recetaId, resumen } = req.body;
 
-    const pedido = await prisma.pedido.create({
-      data: {
-        nombreCliente,
-        cantidadPanes: Number(cantidadPanes),
-        montoTotal: Number(montoTotal),
-        recetaId: Number(recetaId),
-        resumen, 
-        userId
-      }
-    });
+    // VALIDACIONES
+    if (String(cantidadPanes).replace(/\D/g, "").length > 5) {
+        return res.status(400).json({ error: "La cantidad de panes no puede exceder los 5 dígitos." });
+    }
+    if (nombreCliente) {
+        if (nombreCliente.length > 15) {
+            return res.status(400).json({ error: "El nombre del cliente no puede exceder los 15 caracteres." });
+        }
+        if (/\d/.test(nombreCliente)) {
+            return res.status(400).json({ error: "El nombre del cliente no puede contener números." });
+        }
+    }
 
-    // Descontar Stock
     const resumenObj = JSON.parse(resumen);
     const ingredientesUsados = resumenObj.ingredientes || [];
+    const montoFinal = Number(montoTotal);
 
-    if (ingredientesUsados.length > 0) {
-        await prisma.$transaction(
-            ingredientesUsados.map((ing: any) => {
+    // TRANSACCIÓN BASE DE DATOS
+    const result = await prisma.$transaction(async (tx) => {
+        
+        // 1. Crear el Pedido
+        const pedido = await tx.pedido.create({
+            data: {
+                nombreCliente,
+                cantidadPanes: Number(cantidadPanes),
+                montoTotal: montoFinal,
+                recetaId: Number(recetaId),
+                resumen,
+                userId
+            }
+        });
+
+        // 2. Crear el Ingreso (para que aparezca en el historial de Ingresos)
+        await tx.ingreso.create({
+            data: {
+                monto: montoFinal,
+                descripcion: `Venta Pedido: ${nombreCliente} (${cantidadPanes} un.)`,
+                metodoPago: "EFECTIVO", 
+                fecha: new Date(),
+                userId
+            }
+        });
+
+        // 3. Actualizar CAJA DIARIA (Total, Efectivo, Ventas y Ganancia)
+        // Buscamos si hay caja abierta
+        const cajaAbierta = await tx.cajaDiaria.findFirst({
+            where: { userId, estado: "ABIERTA" }
+        });
+
+        if (cajaAbierta) {
+            // AQUÍ ESTABA EL ERROR: Faltaba sumar a totalVentas y gananciaNeta
+            await tx.cajaDiaria.update({
+                where: { id: cajaAbierta.id },
+                data: {
+                    totalFinal: { increment: montoFinal },
+                    efectivo: { increment: montoFinal },
+                    totalVentas: { increment: montoFinal }, // <--- CLAVE PARA QUE APAREZCA EN VENTAS
+                    gananciaNeta: { increment: montoFinal } // <--- CLAVE PARA QUE SUME GANANCIA
+                }
+            });
+        }
+
+        // 4. Descontar Stock de Insumos
+        if (ingredientesUsados.length > 0) {
+            for (const ing of ingredientesUsados) {
                 if (ing.insumoId) {
-                    return prisma.insumo.update({
+                    await tx.insumo.update({
                         where: { id: ing.insumoId },
                         data: { stockGramos: { decrement: ing.cantidad } }
                     });
-                } else {
-                    return prisma.insumo.updateMany({
-                         where: { userId, nombre: ing.nombre },
-                         data: { stockGramos: { decrement: ing.cantidad } }
-                    });
                 }
-            })
-        );
-    }
+            }
+        }
 
-    res.json(pedido);
+        return pedido;
+    });
+
+    res.json(result);
+
   } catch (error) {
     console.error("Error en pedido:", error);
-    res.status(500).json({ error: 'Error al procesar el pedido' });
+    res.status(500).json({ error: 'Error al procesar el pedido.' });
   }
 };

@@ -4,19 +4,19 @@ import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog"
 import { TrendingUp, TrendingDown, Wallet, Store, Unlock, RefreshCcw, Loader2 } from "lucide-react"
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend 
 } from "recharts"
-import { useToast } from "@/components/ui/use-toast"
+// CAMBIO 1: Importamos Sonner para alertas consistentes
+import { toast } from "sonner" 
 import { useApp } from "@/context/app-context"
+import { Label } from "@/components/ui/label"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 export default function DashboardPage() {
-  const { toast } = useToast()
   const { refreshCajaStatus } = useApp()
   
   const [ingresosSemana, setIngresosSemana] = useState(0)
@@ -30,7 +30,24 @@ export default function DashboardPage() {
   const [isAbrirCajaOpen, setIsAbrirCajaOpen] = useState(false)
   const [isActionLoading, setIsActionLoading] = useState(false)
 
-  // --- CARGA DE DATOS ---
+  // --- VALIDACIÓN NORMALIZADA (Igual que en otros módulos) ---
+  const handleMontoChange = (valor: string) => {
+      // 1. Alerta si ingresa letras
+      if (/\D/.test(valor)) {
+          toast.warning("Solo se permiten números", { duration: 2000 })
+      }
+      const soloNumeros = valor.replace(/\D/g, "")
+
+      // 2. Alerta y bloqueo si pasa de 10 dígitos
+      if (soloNumeros.length > 10) {
+          toast.warning("El monto inicial no puede exceder 10 dígitos", { duration: 2000 })
+          setMontoInicial(soloNumeros.slice(0, 10))
+      } else {
+          setMontoInicial(soloNumeros)
+      }
+  }
+  // ---------------------------------------------------------
+
   const fetchData = useCallback(async () => {
     try {
       const token = localStorage.getItem("accessToken")
@@ -58,12 +75,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData()
-    const intervalId = setInterval(() => fetchData(), 2000) // Actualizar cada 2s
+    const intervalId = setInterval(() => fetchData(), 2000) 
     return () => clearInterval(intervalId) 
   }, [fetchData])
 
   const handleAbrirCaja = async () => {
-    if (!montoInicial) return toast({ title: "Error", description: "Monto requerido", variant: "destructive" })
+    if (!montoInicial) {
+        toast.error("Debes ingresar un monto inicial para abrir la caja")
+        return
+    }
+    
     setIsActionLoading(true)
     try {
         const token = localStorage.getItem("accessToken")
@@ -73,17 +94,21 @@ export default function DashboardPage() {
             body: JSON.stringify({ montoInicial: parseInt(montoInicial) })
         })
         if (res.ok) {
-            toast({ title: "Caja Abierta" })
+            toast.success("Caja abierta correctamente")
             setIsAbrirCajaOpen(false)
             refreshCajaStatus() 
             fetchData() 
+        } else {
+            const err = await res.json()
+            toast.error(err.error || "Error al abrir caja")
         }
-    } catch (e) { toast({ title: "Error", variant: "destructive" }) } 
+    } catch (e) { toast.error("Error de conexión") } 
     finally { setIsActionLoading(false) }
   }
 
   const handleCerrarCaja = async () => {
-    if(!confirm("¿Cerrar caja?")) return;
+    if(!confirm("¿Estás seguro de cerrar la caja y finalizar el turno?")) return;
+    
     setIsActionLoading(true)
     try {
         const token = localStorage.getItem("accessToken")
@@ -92,9 +117,11 @@ export default function DashboardPage() {
             headers: { Authorization: `Bearer ${token}` }
         })
         if (res.ok) {
-            toast({ title: "Caja Cerrada", description: "Ganancias del día guardadas." })
+            toast.success("Caja cerrada. Jornada finalizada.")
             refreshCajaStatus()
             fetchData()
+        } else {
+            toast.error("No se pudo cerrar la caja")
         }
     } catch (e) { console.error(e) }
     finally { setIsActionLoading(false) }
@@ -124,9 +151,22 @@ export default function DashboardPage() {
                 <Dialog open={isAbrirCajaOpen} onOpenChange={setIsAbrirCajaOpen}>
                     <DialogTrigger asChild><Button size="lg" className="gap-2 bg-blue-600 hover:bg-blue-700"><Store className="h-5 w-5" /> Abrir Caja</Button></DialogTrigger>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>Apertura de Caja</DialogTitle><DialogDescription>Monto inicial.</DialogDescription></DialogHeader>
-                        <Input type="number" placeholder="20000" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} className="text-lg font-bold" />
-                        <DialogFooter><Button onClick={handleAbrirCaja} disabled={isActionLoading}>Abrir</Button></DialogFooter>
+                        <DialogHeader><DialogTitle>Apertura de Caja</DialogTitle><DialogDescription>Ingresa el dinero base para iniciar el turno.</DialogDescription></DialogHeader>
+                        
+                        {/* INPUT CON VALIDACIÓN DE NORMALIZACIÓN */}
+                        <div className="space-y-2">
+                            <Label>Monto Inicial ($)</Label>
+                            <Input 
+                                type="text" 
+                                inputMode="numeric"
+                                placeholder="Ej: 20000" 
+                                value={montoInicial} 
+                                onChange={(e) => handleMontoChange(e.target.value)} 
+                                className="text-lg font-bold" 
+                            />
+                        </div>
+
+                        <DialogFooter><Button onClick={handleAbrirCaja} disabled={isActionLoading}>Abrir Caja</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
             )}
@@ -151,11 +191,49 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4 shadow-sm">
           <CardHeader><CardTitle>Flujo Diario</CardTitle></CardHeader>
-          <CardContent className="pl-2"><div className="h-[300px] w-full"><ResponsiveContainer><BarChart data={datosGrafico}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip formatter={(v:number)=>[formatoCLP(v),'']} /><Bar dataKey="ingresos" fill="#22c55e" radius={[4,4,0,0]} /><Bar dataKey="egresos" fill="#ef4444" radius={[4,4,0,0]} /></BarChart></ResponsiveContainer></div></CardContent>
+          <CardContent className="pl-2">
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer>
+                <BarChart data={datosGrafico}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip formatter={(v:number)=>[formatoCLP(v), '']} />
+                  <Legend verticalAlign="top" height={36} />
+                  <Bar dataKey="ingresos" name="Ingresos" fill="#22c55e" radius={[4,4,0,0]} />
+                  <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[4,4,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
         </Card>
         <Card className="col-span-3 shadow-sm">
           <CardHeader><CardTitle>Rentabilidad</CardTitle></CardHeader>
-          <CardContent><div className="h-[300px] w-full"><ResponsiveContainer><AreaChart data={datosGrafico}><defs><linearGradient id="colorGanancia" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs><XAxis dataKey="name" /><Tooltip formatter={(v:any,n:any,p:any)=>[formatoCLP(p.payload.ingresos-p.payload.egresos),'Ganancia']} /><Area type="monotone" dataKey={(d)=>d.ingresos-d.egresos} stroke="#3b82f6" fillOpacity={1} fill="url(#colorGanancia)" /></AreaChart></ResponsiveContainer></div></CardContent>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer>
+                <AreaChart data={datosGrafico}>
+                  <defs>
+                    <linearGradient id="colorGanancia" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="name" />
+                  <Tooltip formatter={(v:any,n:any,p:any)=>[formatoCLP(p.payload.ingresos-p.payload.egresos), '']} />
+                  <Legend verticalAlign="top" height={36} />
+                  <Area 
+                    type="monotone" 
+                    dataKey={(d)=>d.ingresos-d.egresos} 
+                    name="Ganancia Neta" 
+                    stroke="#3b82f6" 
+                    fillOpacity={1} 
+                    fill="url(#colorGanancia)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>
