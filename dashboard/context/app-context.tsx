@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { Store, Info, LogOut } from "lucide-react" // Agregamos icono LogOut
+import { Store, Info, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -59,10 +59,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshCajaStatus = useCallback(async () => {
     setIsCheckingCaja(true) 
+    
+    // --- 1. LECTURA OPTIMISTA INMEDIATA (Solución F5) ---
+    // Recuperamos el estado visualmente antes de esperar a la API
+    if (typeof window !== 'undefined') {
+        const estadoGuardado = localStorage.getItem("cajaAbierta") === "true"
+        if (estadoGuardado) {
+            setCajaAbierta(true)
+        }
+    }
+    // ----------------------------------------------------
+
     const token = localStorage.getItem("accessToken")
     
     if (!token) {
         setCajaAbierta(false)
+        localStorage.removeItem("cajaAbierta")
         setIsCheckingCaja(false)
         return
     }
@@ -75,14 +87,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json()
         const estaAbierta = data && data.estado === "ABIERTA"
+        
+        // Actualizamos con la verdad del servidor
         setCajaAbierta(estaAbierta)
-        if (estaAbierta) setShowRestrictedDialog(false)
+        
+        // Sincronizamos localStorage
+        if (estaAbierta) {
+            localStorage.setItem("cajaAbierta", "true")
+            setShowRestrictedDialog(false) // Forzamos cierre si estaba abierto
+        } else {
+            localStorage.removeItem("cajaAbierta")
+        }
+        
       } else {
+         // Si falla la respuesta lógica (no 200 OK), asumimos cerrada
          setCajaAbierta(false)
+         localStorage.removeItem("cajaAbierta")
       }
     } catch (e) {
       console.error("Error verificando caja", e)
-      setCajaAbierta(false)
+      // Si hay error de red, MANTENEMOS el estado optimista (no cerramos la caja en la UI)
+      // Esto evita que se bloquee la pantalla si se cae el internet momentáneamente
     } finally {
         setIsCheckingCaja(false) 
     }
@@ -92,9 +117,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshCajaStatus()
   }, [refreshCajaStatus])
 
-  // Lógica de bloqueo
+  // Lógica de Bloqueo de Pantalla
   useEffect(() => {
+    // Si estamos verificando, NO hacemos nada (evita parpadeo)
     if (isCheckingCaja) return
+
     const esRutaProtegida = protectedRoutes.some(route => pathname.startsWith(route))
     
     if (esRutaProtegida && !cajaAbierta) {
@@ -110,10 +137,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   const handleLogout = () => {
-      // Lógica de cierre de sesión
-      localStorage.removeItem("accessToken")
-      localStorage.removeItem("refreshToken")
-      localStorage.removeItem("user")
+      localStorage.clear()
       document.cookie = "panely_session=; path=/; max-age=0";
       router.push("/")
   }
@@ -122,22 +146,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{ cajaAbierta, refreshCajaStatus, notifications, addNotification, removeNotification, isCheckingCaja }}>
       {children}
 
-      {/* 1. Eliminamos modal={false} para que sea bloqueante (overlay oscuro).
-          2. Eliminamos las clases de posición fija (bottom-10 right-10) para que se centre por defecto.
-      */}
       <Dialog open={showRestrictedDialog} onOpenChange={(open) => !open && setShowRestrictedDialog(true)}>
         <DialogContent 
-            className="border-l-4 border-l-blue-600 max-w-md [&>button]:hidden" // Ocultamos la X de cierre
-            onPointerDownOutside={(e) => e.preventDefault()} // Evita cerrar clicando fuera
+            className="border-l-4 border-l-blue-600 max-w-md [&>button]:hidden" 
+            onPointerDownOutside={(e) => e.preventDefault()}
             onInteractOutside={(e) => e.preventDefault()}
-            onEscapeKeyDown={(e) => e.preventDefault()} // Evita cerrar con ESC
+            onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-blue-700 text-xl">
                 <div className="bg-blue-100 p-2 rounded-full">
                     <Store className="h-6 w-6 text-blue-600" />
                 </div>
-                Caja Abierta Requerida
+                Gestión de Turno Requerida
             </DialogTitle>
             <DialogDescription asChild className="text-base text-slate-600 pt-2">
               <div className="flex flex-col gap-2">

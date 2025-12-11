@@ -107,7 +107,6 @@ export const deleteReceta = async (req: Request, res: Response) => {
     }
 }
 
-// --- HISTORIAL DE PEDIDOS ---
 export const getPedidos = async (req: Request, res: Response) => {
     try {
         // @ts-ignore
@@ -123,94 +122,110 @@ export const getPedidos = async (req: Request, res: Response) => {
     }
 }
 
-// --- CREAR PEDIDO + INGRESO + CAJA + STOCK ---
+// --- CREAR PEDIDO + INGRESO + CAJA + STOCK (CORREGIDO TIMEOUT) ---
 export const createPedido = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
     const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Usuario no identificado" });
+
     const { nombreCliente, cantidadPanes, montoTotal, recetaId, resumen } = req.body;
 
-    // VALIDACIONES
+    // 1. Validaciones
     if (String(cantidadPanes).replace(/\D/g, "").length > 5) {
         return res.status(400).json({ error: "La cantidad de panes no puede exceder los 5 dígitos." });
     }
-    if (nombreCliente) {
-        if (nombreCliente.length > 15) {
-            return res.status(400).json({ error: "El nombre del cliente no puede exceder los 15 caracteres." });
-        }
-        if (/\d/.test(nombreCliente)) {
-            return res.status(400).json({ error: "El nombre del cliente no puede contener números." });
-        }
+    if (nombreCliente && nombreCliente.length > 15) {
+        return res.status(400).json({ error: "El nombre del cliente no puede exceder los 15 caracteres." });
     }
 
-    const resumenObj = JSON.parse(resumen);
-    const ingredientesUsados = resumenObj.ingredientes || [];
-    const montoFinal = Number(montoTotal);
+    // 2. Preparar Datos (Conversión estricta de tipos)
+    let ingredientesUsados = [];
+    try {
+        const resumenObj = resumen ? JSON.parse(resumen) : {};
+        ingredientesUsados = resumenObj.ingredientes || [];
+    } catch (e) {
+        console.warn("Error parseando resumen:", e);
+    }
 
-    // TRANSACCIÓN BASE DE DATOS
+    // Aseguramos que sea entero para evitar errores en la DB
+    const montoFinal = Math.round(Number(montoTotal) || 0);
+    const cantidadPanesInt = parseInt(cantidadPanes);
+    const recetaIdInt = parseInt(recetaId);
+
+    // 3. Transacción Atómica CON TIMEOUT AUMENTADO
     const result = await prisma.$transaction(async (tx) => {
         
-        // 1. Crear el Pedido
+        // A. Crear el Pedido
         const pedido = await tx.pedido.create({
             data: {
                 nombreCliente,
-                cantidadPanes: Number(cantidadPanes),
+                cantidadPanes: cantidadPanesInt,
                 montoTotal: montoFinal,
-                recetaId: Number(recetaId),
-                resumen,
+                recetaId: recetaIdInt,
+                resumen: resumen || "",
                 userId
             }
         });
 
-        // 2. Crear el Ingreso (para que aparezca en el historial de Ingresos)
+        // B. Crear el Ingreso (Registro histórico para que aparezca en Ingresos)
         await tx.ingreso.create({
             data: {
                 monto: montoFinal,
-                descripcion: `Venta Pedido: ${nombreCliente} (${cantidadPanes} un.)`,
+                descripcion: `Venta Pedido: ${nombreCliente} (${cantidadPanesInt} un.)`,
                 metodoPago: "EFECTIVO", 
                 fecha: new Date(),
                 userId
             }
         });
 
-        // 3. Actualizar CAJA DIARIA (Total, Efectivo, Ventas y Ganancia)
-        // Buscamos si hay caja abierta
+        // C. Actualizar Caja Diaria (Si está abierta)
         const cajaAbierta = await tx.cajaDiaria.findFirst({
             where: { userId, estado: "ABIERTA" }
         });
 
         if (cajaAbierta) {
-            // AQUÍ ESTABA EL ERROR: Faltaba sumar a totalVentas y gananciaNeta
             await tx.cajaDiaria.update({
                 where: { id: cajaAbierta.id },
                 data: {
                     totalFinal: { increment: montoFinal },
                     efectivo: { increment: montoFinal },
-                    totalVentas: { increment: montoFinal }, // <--- CLAVE PARA QUE APAREZCA EN VENTAS
-                    gananciaNeta: { increment: montoFinal } // <--- CLAVE PARA QUE SUME GANANCIA
+                    totalVentas: { increment: montoFinal }, // Sumamos a ventas
+                    gananciaNeta: { increment: montoFinal } // Sumamos a ganancia
                 }
             });
         }
 
-        // 4. Descontar Stock de Insumos
+        // D. Descontar Stock (Esta es la parte que tardaba mucho)
         if (ingredientesUsados.length > 0) {
             for (const ing of ingredientesUsados) {
                 if (ing.insumoId) {
-                    await tx.insumo.update({
-                        where: { id: ing.insumoId },
-                        data: { stockGramos: { decrement: ing.cantidad } }
-                    });
+                    const idInsumo = Number(ing.insumoId);
+                    const cantidadDescontar = Number(ing.cantidad); 
+
+                    // Verificamos que el insumo exista antes de descontar
+                    const insumoExiste = await tx.insumo.findUnique({ where: { id: idInsumo } });
+                    if (insumoExiste) {
+                        await tx.insumo.update({
+                            where: { id: idInsumo },
+                            data: { stockGramos: { decrement: cantidadDescontar } }
+                        });
+                    }
                 }
             }
         }
 
         return pedido;
+    }, {
+        maxWait: 5000, // Tiempo de espera para iniciar
+        timeout: 20000 // AUMENTADO: 20 segundos para completar toda la operación
     });
 
     res.json(result);
 
-  } catch (error) {
-    console.error("Error en pedido:", error);
-    res.status(500).json({ error: 'Error al procesar el pedido.' });
+  } catch (error: any) {
+    console.error("Error crítico en createPedido:", error);
+    const mensajeError = error.meta?.cause || error.message || "Error desconocido al procesar pedido";
+    res.status(500).json({ error: `Fallo al procesar pedido: ${mensajeError}` });
   }
 };
