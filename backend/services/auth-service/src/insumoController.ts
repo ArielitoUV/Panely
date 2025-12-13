@@ -6,7 +6,6 @@ export const getTiposInsumo = async (req: Request, res: Response) => {
     try {
         let tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
         
-        // Si no hay datos, inicializamos SOLO con lo permitido
         if (tipos.length === 0) {
             await prisma.tipoInsumo.createMany({
                 data: [
@@ -16,7 +15,6 @@ export const getTiposInsumo = async (req: Request, res: Response) => {
                     { nombre: "Manteca" },
                     { nombre: "Mejorador" }, 
                     { nombre: "Sal" },
-                    // Maicena ELIMINADA
                 ]
             });
             tipos = await prisma.tipoInsumo.findMany({ orderBy: { nombre: 'asc' } });
@@ -66,29 +64,23 @@ export const getInsumos = async (req: Request, res: Response) => {
   }
 };
 
-// --- CREAR O ACTUALIZAR INSUMO + REGISTRAR EGRESO ---
+// --- CREAR INSUMO + EGRESO ---
 export const createInsumo = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
     const userId = req.user?.id;
     const { nombre, presentacion, cantidadCompra, unidadMedida, valorCompra } = req.body;
 
-    // --- VALIDACIONES DE SEGURIDAD (BACKEND) ---
-    // 1. Validar longitud de cantidad (Max 5 dígitos)
     if (String(cantidadCompra).replace(/\D/g, "").length > 5) {
         return res.status(400).json({ error: "La cantidad no puede exceder los 5 dígitos." });
     }
-
-    // 2. Validar que no sea Maicena (por si intentan inyectarlo)
     if (nombre.toLowerCase().includes("maicena")) {
          return res.status(400).json({ error: "Este insumo ya no está permitido." });
     }
-    // ------------------------------------------
 
     const cantidadNueva = parseFloat(cantidadCompra);
     const valorNuevo = parseInt(valorCompra);
     
-    // Convertir todo a GRAMOS para estandarizar el stock interno
     let gramosNuevos = 0;
     if (unidadMedida === 'kg' || unidadMedida === 'lt') {
         gramosNuevos = cantidadNueva * 1000;
@@ -98,16 +90,13 @@ export const createInsumo = async (req: Request, res: Response) => {
 
     const costoPorGramoNuevo = gramosNuevos > 0 ? (valorNuevo / gramosNuevos) : 0;
 
-    // TRANSACCIÓN: Insumo + Egreso
     await prisma.$transaction(async (tx) => {
         
-        // A. Gestionar Insumo (Crear o Actualizar)
         const insumoExistente = await tx.insumo.findFirst({
-            where: { userId, nombre, presentacion } // Buscamos coincidencia exacta de nombre Y presentación
+            where: { userId, nombre, presentacion } 
         });
 
         if (insumoExistente) {
-            // Actualizar existente (Promedio Ponderado)
             const valorStockActual = insumoExistente.stockGramos * insumoExistente.costoPorGramo;
             const stockTotal = insumoExistente.stockGramos + gramosNuevos;
             const nuevoCosto = stockTotal > 0 ? ((valorStockActual + valorNuevo) / stockTotal) : 0;
@@ -117,13 +106,11 @@ export const createInsumo = async (req: Request, res: Response) => {
                 data: {
                     stockGramos: stockTotal,
                     costoPorGramo: nuevoCosto,
-                    // Sumamos la cantidad histórica de compra para referencia
-                    cantidadCompra: insumoExistente.cantidadCompra + cantidadNueva,
-                    valorCompra: valorNuevo // Guardamos el último valor de compra referencia
+                    cantidadCompra: cantidadNueva,
+                    valorCompra: valorNuevo
                 }
             });
         } else {
-            // Crear nuevo
             await tx.insumo.create({
                 data: {
                     nombre, presentacion, cantidadCompra: cantidadNueva, unidadMedida,
@@ -132,7 +119,6 @@ export const createInsumo = async (req: Request, res: Response) => {
             });
         }
 
-        // B. Registrar el Egreso Automáticamente
         await tx.egreso.create({
             data: {
                 monto: valorNuevo,
@@ -144,7 +130,7 @@ export const createInsumo = async (req: Request, res: Response) => {
         });
     });
 
-    res.json({ message: "Stock ingresado y egreso registrado correctamente" });
+    res.json({ message: "Stock ingresado y datos actualizados correctamente" });
 
   } catch (error) {
     console.error(error);
@@ -152,16 +138,82 @@ export const createInsumo = async (req: Request, res: Response) => {
   }
 };
 
+// --- ACTUALIZAR INSUMO + CORREGIR EGRESO ASOCIADO ---
 export const updateInsumo = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const actualizado = await prisma.insumo.update({
-            where: { id: Number(id) },
-            data: req.body
+        const { nombre, presentacion, cantidadCompra, unidadMedida, valorCompra } = req.body;
+        // @ts-ignore
+        const userId = req.user?.id; // Necesario para buscar el egreso
+
+        // 1. Conversión de Tipos
+        const cantidadFloat = parseFloat(cantidadCompra);
+        const valorInt = parseInt(valorCompra);
+
+        if (isNaN(cantidadFloat) || isNaN(valorInt)) {
+            return res.status(400).json({ error: "Los valores deben ser numéricos." });
+        }
+
+        // 2. Recalcular Stock y Costo
+        let nuevoStockGramos = 0;
+        if (unidadMedida === 'kg' || unidadMedida === 'lt') {
+            nuevoStockGramos = cantidadFloat * 1000;
+        } else {
+            nuevoStockGramos = cantidadFloat;
+        }
+        const nuevoCostoPorGramo = nuevoStockGramos > 0 ? (valorInt / nuevoStockGramos) : 0;
+
+        // 3. TRANSACCIÓN: Corrige Insumo Y busca/corrige el Egreso
+        await prisma.$transaction(async (tx) => {
+            
+            // A. Obtener datos anteriores para buscar el egreso correcto
+            const insumoAnterior = await tx.insumo.findUnique({ where: { id: Number(id) } });
+            
+            if (!insumoAnterior) throw new Error("Insumo no encontrado");
+
+            // B. Actualizar el Insumo
+            const insumoActualizado = await tx.insumo.update({
+                where: { id: Number(id) },
+                data: {
+                    nombre,
+                    presentacion,
+                    unidadMedida,
+                    cantidadCompra: cantidadFloat, // Corregimos visual
+                    valorCompra: valorInt,         // Corregimos visual
+                    stockGramos: nuevoStockGramos, // Corregimos stock físico
+                    costoPorGramo: nuevoCostoPorGramo // Corregimos costo unitario
+                }
+            });
+
+            // C. Buscar y Corregir el Egreso correspondiente
+            // Buscamos el último egreso que coincida con el valor que tenía el insumo antes del error
+            const egresoAjustar = await tx.egreso.findFirst({
+                where: {
+                    userId: insumoAnterior.userId,
+                    categoria: "COMPRA_INSUMO",
+                    monto: insumoAnterior.valorCompra, // Clave: Buscamos por el monto "erróneo" original
+                },
+                orderBy: { fecha: 'desc' } // El más reciente (asumiendo que fue el último error)
+            });
+
+            if (egresoAjustar) {
+                await tx.egreso.update({
+                    where: { id: egresoAjustar.id },
+                    data: {
+                        monto: valorInt, // Actualizamos al nuevo monto corregido
+                        descripcion: `Compra Insumo: ${nombre} ${presentacion} (${cantidadFloat} ${unidadMedida}) (Corregido)`
+                    }
+                });
+            }
+
+            return insumoActualizado;
         });
-        res.json(actualizado);
+
+        res.json({ message: "Insumo y Egreso corregidos exitosamente" });
+
     } catch (error) {
-        res.status(500).json({ error: "Error al actualizar" });
+        console.error("Error al actualizar:", error);
+        res.status(500).json({ error: "No se pudo actualizar el insumo. Verifica los datos." });
     }
 }
 

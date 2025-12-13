@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { AppProvider } from "@/context/app-context" // <--- IMPORTAR ESTO
+import { AppProvider } from "@/context/app-context" 
 import { Toaster } from "@/components/ui/sonner" 
 
 const inter = Inter({ subsets: ["latin"] })
@@ -26,12 +26,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* EL PROVIDER DEBE ENVOLVER TODO */}
           <AppProvider>
              {children}
           </AppProvider>
           
-          <Toaster />
+          {/* --- AQUÍ ESTÁ EL CAMBIO --- */}
+          {/* richColors: Pone el fondo verde/rojo intenso e iconos */}
+          {/* position="top-center": Lo pone arriba al medio para que la profe lo vea */}
+          {/* duration={4000}: Dura 4 segundos en pantalla */}
+          <Toaster position="top-center" richColors duration={4000} closeButton />
+          
         </ThemeProvider>
       </body>
     </html>
